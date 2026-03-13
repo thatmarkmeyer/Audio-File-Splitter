@@ -1415,9 +1415,18 @@
     <!-- 2a: Detect by Algorithm -->
     <div class="detect-subsection">
       <div class="detect-subsection-label">2a — Detect Splits by Algorithm</div>
-      <div style="display:flex;gap:0;border:1.5px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:0.9rem;width:fit-content">
-        <button id="algoSimple"   onclick="setAlgo('simple')"   class="algo-tab active" title="Classic silence detection — fast, works well for clean recordings">Simple</button>
-        <button id="algoAdvanced" onclick="setAlgo('advanced')" class="algo-tab"        title="Multi-signal analysis: silence + spectral flux + BPM — handles drum solos, fades, ambiguous gaps">Advanced</button>
+      <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;margin-bottom:0.9rem">
+        <!-- Algorithm toggle -->
+        <div style="display:flex;gap:0;border:1.5px solid var(--border);border-radius:8px;overflow:hidden;width:fit-content">
+          <button id="algoSimple"   onclick="setAlgo('simple')"   class="algo-tab active" title="Classic silence detection — fast, works well for clean recordings">Simple</button>
+          <button id="algoAdvanced" onclick="setAlgo('advanced')" class="algo-tab"        title="Multi-signal analysis: silence + spectral flux + BPM — handles drum solos, fades, ambiguous gaps">Advanced</button>
+        </div>
+        <!-- Recording type — shared by both Simple and Advanced -->
+        <div style="display:flex;gap:0;border:1.5px solid var(--border);border-radius:8px;overflow:hidden;width:fit-content" title="Recording type — adjusts thresholds for Simple and signal weights for Advanced">
+          <button id="rtStudio" onclick="setRecordingType('studio')" class="algo-tab active" title="Studio recording — clean silence, tighter threshold">🎙 Studio</button>
+          <button id="rtVinyl"  onclick="setRecordingType('vinyl')"  class="algo-tab"        title="Vinyl / tape — noisy floor, looser threshold">💿 Vinyl</button>
+          <button id="rtLive"   onclick="setRecordingType('live')"   class="algo-tab"        title="Live show — audience noise, very loose threshold">🎤 Live</button>
+        </div>
       </div>
 
       <!-- Simple mode controls -->
@@ -1441,6 +1450,18 @@
             oninput="setStartTrackNum(this.value)"
             title="First track number — set to e.g. 4 for Side B of a 3-track-per-side album">
         </div>
+        <div class="field" style="max-width:85px;min-width:65px;flex:0 1 85px">
+          <label title="Expected number of tracks on this side. Leave blank to detect all.">Total Tracks</label>
+          <input type="text" id="totalTracks" value="" placeholder="Unk"
+            style="width:100%;text-align:center"
+            title="Enter a number to select the best N splits, or leave blank to use all detected splits">
+        </div>
+        <div class="field" style="max-width:75px;min-width:60px;flex:0 1 75px;justify-content:flex-end">
+          <label style="visibility:hidden">.</label>
+          <button class="btn" id="estimateBtn" onclick="toggleEstimate()"
+            title="Estimate mode: accept the best N ± range splits where range = round((N+5)/3). Click to toggle."
+            style="font-size:0.65rem;padding:0.22rem 0.55rem;white-space:nowrap">Estimate</button>
+        </div>
       </div>
 
       <!-- Advanced mode controls -->
@@ -1452,15 +1473,15 @@
             <input type="number" id="advMinTrack" value="20" min="5" max="300" step="1">
           </div>
           <div class="field" style="max-width:120px;min-width:90px;flex:0 1 120px">
-            <label title="Minimum consecutive silence to consider as a boundary">Min Silence (s)</label>
-            <input type="number" id="advMinSilence" value="1.5" min="0.3" max="10" step="0.1">
+            <label title="Typical track-gap length — used as a signal, not a hard gate. Short gaps with strong spectral evidence still score well.">Avg. Gap (s)</label>
+            <input type="number" id="advMinSilence" value="1.0" min="0.1" max="10" step="0.1">
           </div>
           <div class="field" style="max-width:130px;min-width:110px;flex:0 1 130px">
-            <label title="How many signals must agree to call a boundary">Sensitivity</label>
+            <label title="Minimum fused score a candidate must reach to be accepted as a track boundary">Score Threshold</label>
             <select id="advSensitivity">
-              <option value="0.25">Permissive</option>
-              <option value="0.40" selected>Balanced</option>
-              <option value="0.58">Conservative</option>
+              <option value="0.18">Permissive</option>
+              <option value="0.28" selected>Balanced</option>
+              <option value="0.42">Conservative</option>
             </select>
           </div>
           <div class="field" style="max-width:85px;min-width:70px;flex:0 1 85px">
@@ -1468,40 +1489,105 @@
             <input type="number" id="advStartTrack" value="1" min="1" max="99" step="1"
               oninput="setStartTrackNum(this.value)">
           </div>
-        </div>
-        <div style="padding:0.75rem 1rem;background:rgba(145,243,223,0.04);border:1.5px solid var(--border);border-radius:8px;margin-bottom:0.6rem">
-          <div style="font-size:0.66rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--groove);margin-bottom:0.6rem">Signal Weights <span style="font-size:0.6rem;opacity:0.7;text-transform:none;letter-spacing:0">(higher = that signal has more say in the final boundary score)</span></div>
-          <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:flex-end">
-            <div class="field" style="min-width:120px;flex:1">
-              <label>🔇 Silence / Energy</label>
-              <div style="display:flex;align-items:center;gap:0.5rem">
-                <input type="range" id="wEnergy" min="0" max="3" step="0.1" value="1.5" style="flex:1" oninput="document.getElementById('wEnergyVal').textContent=parseFloat(this.value).toFixed(1)">
-                <span id="wEnergyVal" style="font-size:0.7rem;color:var(--amber);min-width:2ch">1.5</span>
-              </div>
-            </div>
-            <div class="field" style="min-width:120px;flex:1">
-              <label>🎼 Spectral Flux</label>
-              <div style="display:flex;align-items:center;gap:0.5rem">
-                <input type="range" id="wFlux" min="0" max="3" step="0.1" value="1.2" style="flex:1" oninput="document.getElementById('wFluxVal').textContent=parseFloat(this.value).toFixed(1)">
-                <span id="wFluxVal" style="font-size:0.7rem;color:var(--amber);min-width:2ch">1.2</span>
-              </div>
-            </div>
-            <div class="field" style="min-width:120px;flex:1">
-              <label>🥁 BPM / Rhythm</label>
-              <div style="display:flex;align-items:center;gap:0.5rem">
-                <input type="range" id="wBpm" min="0" max="3" step="0.1" value="0.8" style="flex:1" oninput="document.getElementById('wBpmVal').textContent=parseFloat(this.value).toFixed(1)">
-                <span id="wBpmVal" style="font-size:0.7rem;color:var(--amber);min-width:2ch">0.8</span>
-              </div>
-            </div>
-            <div class="field" style="min-width:120px;flex:1">
-              <label>🎚 High-freq Drop</label>
-              <div style="display:flex;align-items:center;gap:0.5rem">
-                <input type="range" id="wHfc" min="0" max="3" step="0.1" value="0.9" style="flex:1" oninput="document.getElementById('wHfcVal').textContent=parseFloat(this.value).toFixed(1)">
-                <span id="wHfcVal" style="font-size:0.7rem;color:var(--amber);min-width:2ch">0.9</span>
-              </div>
-            </div>
+          <div class="field" style="max-width:85px;min-width:65px;flex:0 1 85px">
+            <label title="Expected number of tracks on this side. Leave blank to detect all.">Total Tracks</label>
+            <input type="text" id="advTotalTracks" value="" placeholder="Unk"
+              style="width:100%;text-align:center"
+              title="Enter a number to select the best N splits, or leave blank to use all detected splits">
+          </div>
+          <div class="field" style="max-width:75px;min-width:60px;flex:0 1 75px;justify-content:flex-end">
+            <label style="visibility:hidden">.</label>
+            <button class="btn" id="advEstimateBtn" onclick="toggleEstimate()"
+              title="Estimate mode: accept the best N ± range splits where range = round((N+5)/3). Click to toggle."
+              style="font-size:0.65rem;padding:0.22rem 0.55rem;white-space:nowrap">Estimate</button>
           </div>
         </div>
+        <div style="padding:0.75rem 1rem;background:rgba(145,243,223,0.04);border:1.5px solid var(--border);border-radius:8px;margin-bottom:0.6rem">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.7rem">
+            <div style="font-size:0.66rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--groove)">Signal Weights <span style="font-size:0.6rem;opacity:0.7;text-transform:none;letter-spacing:0"> — off · low · med · high</span></div>
+          </div>
+          <!-- hidden range inputs — algorithm reads these values -->
+          <input type="range" id="wEnergy"   min="0" max="2" step="0.25" value="1.75" style="display:none">
+          <input type="range" id="wFlux"     min="0" max="2" step="0.25" value="1.25" style="display:none">
+          <input type="range" id="wBpm"      min="0" max="2" step="0.25" value="0.75" style="display:none">
+          <input type="range" id="wHfc"      min="0" max="2" step="0.25" value="1.25" style="display:none">
+          <input type="range" id="wBpmHp"    min="0" max="2" step="0.25" value="0.75" style="display:none">
+          <input type="range" id="wOnset"    min="0" max="2" step="0.25" value="0.75" style="display:none">
+          <input type="range" id="wCentroid" min="0" max="2" step="0.25" value="0.75" style="display:none">
+          <input type="range" id="wChroma"   min="0" max="2" step="0.25" value="0.75" style="display:none">
+          <input type="range" id="wDynamic"  min="0" max="2" step="0.25" value="0.75" style="display:none">
+          <!-- two-column button grid -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.3rem 1.4rem">
+            <div class="sw-row" data-id="wEnergy"   data-val="1.75" data-label="🔇 Silence / energy"   title="Detects quiet gaps between tracks"></div>
+            <div class="sw-row" data-id="wFlux"     data-val="1.25" data-label="🎼 Spectral flux"       title="Measures spectrum change at boundary"></div>
+            <div class="sw-row" data-id="wBpm"      data-val="0.75" data-label="🥁 BPM / rhythm"        title="Flags tempo changes across boundary"></div>
+            <div class="sw-row" data-id="wHfc"      data-val="1.25" data-label="🎚 High-freq drop"      title="Detects treble roll-off at track end"></div>
+            <div class="sw-row" data-id="wBpmHp"    data-val="0.75" data-label="🥁 Hi-pass BPM"         title="Snare/hi-hat band tempo comparison"></div>
+            <div class="sw-row" data-id="wOnset"    data-val="0.75" data-label="🎵 Onset density"       title="Detects drop in note-event rate"></div>
+            <div class="sw-row" data-id="wCentroid" data-val="0.75" data-label="☀️ Spectral centroid"   title="Measures shift in tonal brightness"></div>
+            <div class="sw-row" data-id="wChroma"   data-val="0.75" data-label="🎹 Key / chroma"        title="Detects key or tonal centre change"></div>
+            <div class="sw-row" data-id="wDynamic"  data-val="0.75" data-label="📊 Dynamic range"       title="Detects fade-out via crest factor drop"></div>
+          </div>
+        </div>
+        <script>
+        (function(){
+          var LEVELS = [
+            [0,    '✕', '#2a2e2a', '#666'],
+            [0.75, '●', '#5a4e08', '#e8c84a'],
+            [1.25, '●', '#6e3208', '#e8802a'],
+            [1.75, '●', '#6e1208', '#e83a2a'],
+          ];
+          function setWeight(id, val) {
+            var inp = document.getElementById(id);
+            if (inp) inp.value = val;
+            document.querySelectorAll('.sw-btn[data-for="' + id + '"]').forEach(function(btn) {
+              var bv = parseFloat(btn.dataset.level);
+              var active = Math.abs(bv - val) < 0.01;
+              var lvl = LEVELS.find(function(l){ return Math.abs(l[0]-bv)<0.01; }) || LEVELS[0];
+              btn.style.background  = active ? lvl[2] : 'rgba(0,0,0,0.15)';
+              btn.style.color       = active ? lvl[3] : '#555';
+              btn.style.borderColor = active ? lvl[3] : 'rgba(255,255,255,0.06)';
+              btn.style.transform   = active ? 'scale(1.18)' : 'scale(1)';
+            });
+          }
+          function buildRow(el) {
+            var id = el.dataset.id, label = el.dataset.label, init = parseFloat(el.dataset.val);
+            el.style.cssText = 'display:flex;align-items:center;gap:0.4rem;padding:0.18rem 0';
+            var lbl = document.createElement('span');
+            lbl.textContent = label;
+            lbl.style.cssText = 'font-size:0.68rem;color:var(--groove);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:help';
+            if (el.title) lbl.title = el.title;
+            el.appendChild(lbl);
+            var btns = document.createElement('div');
+            btns.style.cssText = 'display:flex;gap:3px;flex-shrink:0';
+            LEVELS.forEach(function(lvl) {
+              var b = document.createElement('button');
+              b.className = 'sw-btn';
+              b.dataset.for   = id;
+              b.dataset.level = lvl[0];
+              b.textContent   = lvl[1];
+              b.title = lvl[0]===0 ? 'Off' : lvl[0]===0.75 ? 'Low' : lvl[0]===1.25 ? 'Medium' : 'High';
+              b.style.cssText = 'width:20px;height:20px;border-radius:4px;border:1px solid transparent;cursor:pointer;font-size:0.62rem;line-height:1;padding:0;transition:all 0.1s';
+              (function(v){ b.onclick = function(){ setWeight(id, v); }; })(lvl[0]);
+              btns.appendChild(b);
+            });
+            el.appendChild(btns);
+            setWeight(id, init);
+          }
+          window.applyPreset = function(name) {
+            var presets = {
+              studio: {wEnergy:1.75, wFlux:1.25, wBpm:0.75, wHfc:1.25, wBpmHp:0.75, wOnset:0.75, wCentroid:0.75, wChroma:0.75, wDynamic:0.75},
+              live:   {wEnergy:0.75, wFlux:1.25, wBpm:0.75, wHfc:0.75, wBpmHp:0.75, wOnset:1.75, wCentroid:1.75, wChroma:1.75, wDynamic:0   },
+              vinyl:  {wEnergy:1.25, wFlux:1.25, wBpm:1.25, wHfc:1.25, wBpmHp:1.25, wOnset:1.25, wCentroid:0.75, wChroma:0.75, wDynamic:1.25},
+            };
+            var p = presets[name]; if (!p) return;
+            Object.keys(p).forEach(function(id){ setWeight(id, p[id]); });
+          };
+          function init() { document.querySelectorAll('.sw-row').forEach(buildRow); }
+          if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+          else init();
+        })();
+        </script>
         <div id="bpmStrip" style="display:none;padding:0.5rem 0.9rem;background:rgba(217,175,48,0.06);border:1px solid rgba(217,175,48,0.25);border-radius:7px;margin-bottom:0.5rem;font-family:'DM Mono',monospace;font-size:0.7rem;color:var(--groove)">
           <span id="bpmStripText"></span>
         </div>
@@ -1732,6 +1818,92 @@ function setStartTrackNum(val) {
   startTrackNum = (isNaN(n) || n < 1) ? 1 : n;
   // Re-render track list so numbers update live (only if tracks already detected)
   if (trackSegments.length) renderTrackList();
+}
+
+// ── Total Tracks / Estimate ────────────────────────────────────────────────
+let estimateMode = false;
+
+function toggleEstimate() {
+  estimateMode = !estimateMode;
+  ['estimateBtn', 'advEstimateBtn'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    btn.classList.toggle('btn-primary', estimateMode);
+    btn.title = estimateMode
+      ? 'Estimate ON — will find best N ± range splits. Click to turn off.'
+      : 'Estimate mode: accept the best N ± range splits where range = round((N+5)/3). Click to toggle.';
+  });
+}
+
+// Read total tracks from whichever panel is active; return {n, estimate}
+// n = null means "use all detected splits"
+function getTotalTracksParams() {
+  const raw = currentAlgo === 'advanced'
+    ? (document.getElementById('advTotalTracks') || {}).value
+    : (document.getElementById('totalTracks') || {}).value;
+  const n = parseInt(raw);
+  if (isNaN(n) || n < 1) return { n: null, estimate: estimateMode };
+  return { n, estimate: estimateMode };
+}
+
+// Given an array of accepted splits (objects with .score and .time, or plain seconds)
+// and all scoredCandidates (with .score and .time), apply the total-track constraint.
+// Returns a final array of split times (seconds).
+//
+// If n is given and !estimate: pick the best n splits by score (subject to minTrkSec spacing).
+// If n is given and  estimate: n ± range where range = round((n+5)/3); pick the best
+//   count in [n-range, n+range] that scores highest as a set.
+// If n is null: return accepted as-is (unchanged behaviour).
+function applyTrackCount(acceptedRuns, allCandidates, durSec, minTrkSec) {
+  const { n, estimate } = getTotalTracksParams();
+  if (n === null) {
+    // No count specified — use whatever detection produced
+    return acceptedRuns.map(r => typeof r === 'number' ? r : parseFloat(r.time.toFixed(3)));
+  }
+
+  // We need n splits → n+1 tracks.  Build a pool of all scored candidates,
+  // sorted best-score first, then greedily pick while respecting minTrkSec.
+  // For simple mode, candidates may lack .score; use silDuration as proxy.
+  const pool = allCandidates
+    .map(r => ({
+      time:  typeof r === 'number' ? r : r.time,
+      score: r.score  !== undefined ? r.score
+           : r.silDuration !== undefined ? r.silDuration
+           : 0,
+    }))
+    .filter(r => r.time >= 5 && r.time <= durSec - 5)
+    .sort((a, b) => b.score - a.score);   // best score first
+
+  // Greedy pick respecting minTrkSec, up to maxN splits
+  function greedyPick(maxN) {
+    const taken = [];
+    for (const cand of pool) {
+      if (taken.length >= maxN) break;
+      const ok = taken.every(t => Math.abs(t.time - cand.time) >= minTrkSec)
+               && (durSec - cand.time) >= minTrkSec;
+      if (ok) taken.push(cand);
+    }
+    return taken.sort((a, b) => a.time - b.time);
+  }
+
+  if (!estimate) {
+    // Exact: pick best n
+    const picked = greedyPick(n);
+    return picked.map(r => parseFloat(r.time.toFixed(3)));
+  } else {
+    // Estimate: try all counts in [n-range, n+range], pick the set with highest mean score
+    const range = Math.round((n + 5) / 3);
+    const lo = Math.max(1, n - range);
+    const hi = n + range;
+    let bestSet = [], bestMean = -1;
+    for (let cnt = lo; cnt <= hi; cnt++) {
+      const set = greedyPick(cnt);
+      if (!set.length) continue;
+      const mean = set.reduce((s, r) => s + r.score, 0) / set.length;
+      if (mean > bestMean) { bestMean = mean; bestSet = set; }
+    }
+    return bestSet.map(r => parseFloat(r.time.toFixed(3)));
+  }
 }
 
 // ── Dark Mode ──────────────────────────────────────────────────────────────
@@ -2892,12 +3064,39 @@ function updateNavButtons() {
 // ── Silence Detection ──────────────────────────────────────────────────────
 // ── Algorithm selector ─────────────────────────────────────────────────────
 let currentAlgo = 'simple';
+let currentRecordingType = 'studio';
+
 function setAlgo(algo) {
   currentAlgo = algo;
   document.getElementById('algoSimple').classList.toggle('active',   algo === 'simple');
   document.getElementById('algoAdvanced').classList.toggle('active', algo === 'advanced');
   document.getElementById('simpleControls').style.display   = algo === 'simple'   ? 'flex' : 'none';
   document.getElementById('advancedControls').style.display = algo === 'advanced' ? 'block' : 'none';
+}
+
+// Simple-mode thresholds + advanced avg-gap per recording type
+var simplePresets = {
+  studio: { threshold: -42, minSilence: 1.0, avgGap: 1.0 },
+  vinyl:  { threshold: -33, minSilence: 1.2, avgGap: 1.2 },
+  live:   { threshold: -27, minSilence: 0.8, avgGap: 0.8 },
+};
+
+function setRecordingType(name) {
+  currentRecordingType = name;
+  // Update pill highlight
+  ['studio','vinyl','live'].forEach(function(n) {
+    document.getElementById('rt' + n.charAt(0).toUpperCase() + n.slice(1))
+      .classList.toggle('active', n === name);
+  });
+  // Apply simple-mode thresholds
+  var sp = simplePresets[name];
+  if (sp) {
+    document.getElementById('silenceThreshold').value = sp.threshold;
+    document.getElementById('minSilence').value       = sp.minSilence;
+    document.getElementById('advMinSilence').value    = sp.avgGap;
+  }
+  // Apply advanced signal weights
+  if (typeof applyPreset === 'function') applyPreset(name);
 }
 
 // Global BPM result from last analysis
@@ -3022,8 +3221,11 @@ async function detectTracks() {
   // Confidence = how much the silence duration exceeds the minimum, relative to a "comfortable" margin (2× min)
   const silDurations = filteredSplits.map(s => s.silDuration);
   const maxSilDur = silDurations.length ? Math.max(...silDurations) : minSilSec;
-  splitPoints = filteredSplits.map(s => s.time);
-  splitConfidence = {}; // keyed by time (stringified)
+  // Apply total-track count constraint (if user specified one)
+  // Pool = all bestCandidates (already one-per-cluster), scored by silence duration
+  const allSimpleCandidates = bestCandidates.map(s => ({ time: s.time, score: s.silDuration, silDuration: s.silDuration }));
+  splitPoints = applyTrackCount(filteredSplits.map(s => ({ time: s.time, score: s.silDuration })), allSimpleCandidates, audioBuffer.duration, minTrkSec);
+  splitConfidence = {};
   for (const s of filteredSplits) {
     // ratio: 0 = exactly at minimum, 1 = at or above comfortable ceiling (2.5× min)
     const ratio = Math.min(1, (s.silDuration - minSilSec) / (minSilSec * 1.5));
@@ -3063,13 +3265,18 @@ async function detectTracks() {
 
 // ── Advanced Multi-Signal Track Detection ─────────────────────────────────
 //
-// Four signals are fused into a boundary-probability curve:
-//   1. Energy envelope  — low RMS = possible gap
-//   2. Spectral flux    — sudden change in spectrum = onset / offset
-//   3. High-freq content (HFC) — drop in high freqs marks track endings
-//   4. BPM discontinuity — tempo change at section boundaries
+// Nine signals are fused into a boundary-probability curve:
+//   1. Energy envelope      — low RMS = possible gap
+//   2. Spectral flux        — sudden change in spectrum = onset / offset
+//   3. High-freq content    — drop in high freqs marks track endings
+//   4. BPM discontinuity    — tempo change at section boundaries
+//   5. High-pass BPM        — snare/hi-hat band autocorrelation (cleaner beats)
+//   6. Onset density        — note-onset count drops near track endings
+//   7. Spectral centroid    — brightness shift between songs
+//   8. Chroma / key shift   — tonal centre change between songs
+//   9. Dynamic range        — crest-factor envelope detects fade-outs
 //
-// The BPM signal also guards against false positives: if a section
+// The BPM signals also guard against false positives: if a section
 // has consistent beats the energy dip is probably a drum solo, not a gap.
 //
 async function detectTracksAdvanced() {
@@ -3087,26 +3294,37 @@ async function detectTracksAdvanced() {
 
   // ── Params ────────────────────────────────────────────────────────────────
   const minTrkSec   = parseFloat(document.getElementById('advMinTrack').value) || 20;
-  const sensitivity = parseFloat(document.getElementById('advSensitivity').value) || 0.40;
+  const scoreThresholdVal = parseFloat(document.getElementById('advSensitivity').value) || 0.28;
   const wEnergy     = parseFloat(document.getElementById('wEnergy').value);
   const wFlux       = parseFloat(document.getElementById('wFlux').value);
   const wBpm        = parseFloat(document.getElementById('wBpm').value);
   const wHfc        = parseFloat(document.getElementById('wHfc').value);
+  const wBpmHp      = parseFloat(document.getElementById('wBpmHp').value);
+  const wOnset      = parseFloat(document.getElementById('wOnset').value);
+  const wCentroid   = parseFloat(document.getElementById('wCentroid').value);
+  const wChroma     = parseFloat(document.getElementById('wChroma').value);
+  const wDynamic    = parseFloat(document.getElementById('wDynamic').value);
 
-  // Sensitivity maps to an energy threshold in dB:
-  //   Permissive   (0.25) → -45 dB  (very quiet passages count)
-  //   Balanced     (0.40) → -38 dB
-  //   Conservative (0.58) → -30 dB  (only near-silence counts)
-  const thresholdDb  = -45 + sensitivity * 26;   // -45 → -30 dB range
+  // Sensitivity maps directly to the fused score threshold — nothing else.
+  //   Permissive   (0.18) — accept weaker evidence
+  //   Balanced     (0.28) — default
+  //   Conservative (0.42) — require strong multi-signal agreement
+  // Energy threshold is fixed — set by recording type, not by sensitivity.
+  // The recording type preset writes silenceThreshold which the simple detector
+  // reads; for advanced we derive the same value independently from a fixed
+  // per-type constant.  We use -38 dB as a sensible mid-range default.
+  const thresholdDb  = -38;
   const threshLin    = Math.pow(10, thresholdDb / 20);
 
-  // Min contiguous quiet frames before a region is a boundary candidate
-  const minSilSec    = parseFloat(document.getElementById('advMinSilence').value) || 1.5;
+  // Avg. gap length: used ONLY as a signal weight inside the energy score,
+  // not as a hard gate.  Any quiet run ≥ 0.3 s becomes a candidate.
+  const avgSilSec    = parseFloat(document.getElementById('advMinSilence').value) || 1.0;
+  const minSilSec    = avgSilSec;  // kept as alias for silLen scoring below
   const hopSec       = 0.05;   // 50 ms frames
   const hopSize      = Math.floor(hopSec * sr);
   const fftSize      = 2048;
   const numFrames    = Math.floor(data0.length / hopSize);
-  const minSilFrames = Math.ceil(minSilSec / hopSec);
+  const minSilFrames = Math.ceil(0.3 / hopSec);   // hard gate: just 0.3 s — any detectable gap qualifies
   const minTrkFrames = Math.ceil(minTrkSec / hopSec);
 
   // ── PASS 1: RMS Energy (50 ms frames) ─────────────────────────────────────
@@ -3159,51 +3377,212 @@ async function detectTracksAdvanced() {
 
   const bpmWinFr   = Math.ceil(10 / hopSec);
   const bpmHopFr   = Math.ceil(5  / hopSec);
-  const bpmEstimates = [];  // [{frameCenter, bpm, strength}]
-
-  for (let wStart = 0; wStart + bpmWinFr < numFrames; wStart += bpmHopFr) {
-    const slice = rmsSmooth.subarray(wStart, wStart + bpmWinFr);
-    const res   = estimateBPM(slice, hopSec);
-    bpmEstimates.push({ frameCenter: wStart + Math.floor(bpmWinFr / 2), ...res });
-    if (bpmEstimates.length % 6 === 0) await new Promise(r => setTimeout(r, 0));
-  }
-
-  // Interpolate BPM to per-frame resolution
+  const bpmEstimates     = [];
   const bpmPerFrame      = new Float32Array(numFrames);
   const strengthPerFrame = new Float32Array(numFrames);
-  if (bpmEstimates.length > 0) {
-    // Fill before first estimate
-    for (let f = 0; f < bpmEstimates[0].frameCenter; f++) {
-      bpmPerFrame[f]      = bpmEstimates[0].bpm;
-      strengthPerFrame[f] = bpmEstimates[0].strength;
+  if (wBpm > 0 || wBpmHp > 0) {
+    setStatus('detectStatus', 'info', '🧠 Estimating tempo…');
+    await new Promise(r => setTimeout(r, 10));
+    for (let wStart = 0; wStart + bpmWinFr < numFrames; wStart += bpmHopFr) {
+      const slice = rmsSmooth.subarray(wStart, wStart + bpmWinFr);
+      const res   = estimateBPM(slice, hopSec);
+      bpmEstimates.push({ frameCenter: wStart + Math.floor(bpmWinFr / 2), ...res });
+      if (bpmEstimates.length % 6 === 0) await new Promise(r => setTimeout(r, 0));
     }
-    // Interpolate between estimates
-    for (let ei = 0; ei < bpmEstimates.length - 1; ei++) {
-      const a = bpmEstimates[ei], b2 = bpmEstimates[ei + 1];
+    if (bpmEstimates.length > 0) {
+      for (let f = 0; f < bpmEstimates[0].frameCenter; f++) {
+        bpmPerFrame[f]      = bpmEstimates[0].bpm;
+        strengthPerFrame[f] = bpmEstimates[0].strength;
+      }
+      for (let ei = 0; ei < bpmEstimates.length - 1; ei++) {
+        const a = bpmEstimates[ei], b2 = bpmEstimates[ei + 1];
+        const span = b2.frameCenter - a.frameCenter;
+        for (let f = a.frameCenter; f < b2.frameCenter; f++) {
+          const t = (f - a.frameCenter) / span;
+          bpmPerFrame[f]      = a.bpm      * (1 - t) + b2.bpm      * t;
+          strengthPerFrame[f] = a.strength * (1 - t) + b2.strength * t;
+        }
+      }
+      const last = bpmEstimates[bpmEstimates.length - 1];
+      for (let f = last.frameCenter; f < numFrames; f++) {
+        bpmPerFrame[f]      = last.bpm;
+        strengthPerFrame[f] = last.strength;
+      }
+    }
+    lastBpmMap = bpmPerFrame;
+  }
+
+  setProgress('detectProgress', 38);
+
+  // ── PASS 3b: High-pass BPM (snare/hi-hat band > ~1 kHz) ──────────────────
+  // A simple one-pole high-pass filter is applied to isolate the snare and
+  // hi-hat transients.  BPM autocorrelation on this band is often more stable
+  // than on the full-band RMS because kick-drum energy doesn't dominate.
+  // We pick whichever estimate (full-band vs high-pass) has stronger autocorr.
+  setStatus('detectStatus', 'info', '🧠 High-pass BPM (snare band)…');
+  await new Promise(r => setTimeout(r, 10));
+
+  // Build high-pass RMS array: one-pole HPF y[n] = x[n] - x[n-1] + α·y[n-1]
+  const hpAlpha   = Math.exp(-2 * Math.PI * 1000 / sr); // ~1 kHz cutoff
+  const rmsHpArr  = new Float32Array(numFrames);
+  {
+    let prevIn = 0, prevOut = 0;
+    let sumSq  = 0;
+    let sampCount = 0;
+    for (let i = 0; i < data0.length; i++) {
+      const x   = (data0[i] + data1[i]) * 0.5;
+      const y   = x - prevIn + hpAlpha * prevOut;
+      prevIn    = x;
+      prevOut   = y;
+      sumSq    += y * y;
+      sampCount++;
+      if (sampCount === hopSize) {
+        const f = Math.floor((i - hopSize + 1) / hopSize);
+        if (f >= 0 && f < numFrames) rmsHpArr[f] = Math.sqrt(sumSq / hopSize);
+        sumSq     = 0;
+        sampCount = 0;
+      }
+    }
+  }
+  const rmsHpSmooth = smoothArray(rmsHpArr, 3);
+
+  const bpmHpEstimates = [];
+  for (let wStart = 0; wStart + bpmWinFr < numFrames; wStart += bpmHopFr) {
+    const sliceFull = rmsSmooth.subarray(wStart, wStart + bpmWinFr);
+    const sliceHp   = rmsHpSmooth.subarray(wStart, wStart + bpmWinFr);
+    const resFull   = estimateBPM(sliceFull, hopSec);
+    const resHp     = estimateBPM(sliceHp,   hopSec);
+    // Choose the estimate with higher autocorrelation strength
+    const best = resHp.strength >= resFull.strength ? resHp : resFull;
+    bpmHpEstimates.push({ frameCenter: wStart + Math.floor(bpmWinFr / 2), ...best });
+    if (bpmHpEstimates.length % 6 === 0) await new Promise(r => setTimeout(r, 0));
+  }
+
+  // Interpolate hi-pass BPM to per-frame resolution
+  const bpmHpPerFrame      = new Float32Array(numFrames);
+  const strengthHpPerFrame = new Float32Array(numFrames);
+  if (bpmHpEstimates.length > 0) {
+    for (let f = 0; f < bpmHpEstimates[0].frameCenter; f++) {
+      bpmHpPerFrame[f]      = bpmHpEstimates[0].bpm;
+      strengthHpPerFrame[f] = bpmHpEstimates[0].strength;
+    }
+    for (let ei = 0; ei < bpmHpEstimates.length - 1; ei++) {
+      const a = bpmHpEstimates[ei], b2 = bpmHpEstimates[ei + 1];
       const span = b2.frameCenter - a.frameCenter;
       for (let f = a.frameCenter; f < b2.frameCenter; f++) {
         const t = (f - a.frameCenter) / span;
-        bpmPerFrame[f]      = a.bpm      * (1 - t) + b2.bpm      * t;
-        strengthPerFrame[f] = a.strength * (1 - t) + b2.strength * t;
+        bpmHpPerFrame[f]      = a.bpm      * (1 - t) + b2.bpm      * t;
+        strengthHpPerFrame[f] = a.strength * (1 - t) + b2.strength * t;
       }
     }
-    // Fill after last estimate
-    const last = bpmEstimates[bpmEstimates.length - 1];
-    for (let f = last.frameCenter; f < numFrames; f++) {
-      bpmPerFrame[f]      = last.bpm;
-      strengthPerFrame[f] = last.strength;
+    const lastHp = bpmHpEstimates[bpmHpEstimates.length - 1];
+    for (let f = lastHp.frameCenter; f < numFrames; f++) {
+      bpmHpPerFrame[f]      = lastHp.bpm;
+      strengthHpPerFrame[f] = lastHp.strength;
     }
   }
 
-  // Store globally for waveform overlay
-  lastBpmMap = bpmPerFrame;
+  setProgress('detectProgress', 46);
 
-  setProgress('detectProgress', 55);
+  // ── PASS 3c: Onset density — skipped when wOnset is off
+  const onsetRate = new Float32Array(numFrames);
+  if (wOnset > 0) {
+    setStatus('detectStatus', 'info', '🧠 Computing onset density…');
+    await new Promise(r => setTimeout(r, 10));
+    const onsetFftSize = 512;
+    const onsetBins    = onsetFftSize >> 1;
+    const onsetArr     = new Float32Array(numFrames);
+    let prevMagOnset   = new Float32Array(onsetBins);
+    for (let f = 0; f < numFrames; f++) {
+      const frame = new Float32Array(onsetFftSize);
+      const s0 = f * hopSize;
+      for (let i = 0; i < onsetFftSize; i++) {
+        const si = s0 + i;
+        const s  = si < data0.length ? (data0[si] + data1[si]) * 0.5 : 0;
+        frame[i] = s * (0.5 - 0.5 * Math.cos(2 * Math.PI * i / (onsetFftSize - 1)));
+      }
+      const mag = realFFTMagnitude(frame, onsetFftSize);
+      let flux = 0;
+      for (let b = 0; b < onsetBins; b++) {
+        const diff = mag[b] - prevMagOnset[b];
+        if (diff > 0) flux += diff;
+      }
+      onsetArr[f]  = flux;
+      prevMagOnset = mag;
+      if (f % 3000 === 0) await new Promise(r => setTimeout(r, 0));
+    }
+    const onsetSmooth = smoothArray(onsetArr, 5);
+    const onsetNorm   = normalise01(onsetSmooth);
+    const onsetWinFr  = Math.ceil(5 / hopSec);
+    for (let f = 0; f < numFrames; f++) {
+      let sum = 0, cnt = 0;
+      for (let k = -onsetWinFr; k <= onsetWinFr; k++) {
+        const idx = f + k;
+        if (idx >= 0 && idx < numFrames) { sum += onsetNorm[idx]; cnt++; }
+      }
+      onsetRate[f] = cnt > 0 ? sum / cnt : 0;
+    }
+  }
 
-  // ── PASS 4: Spectral flux around each quiet-run midpoint ──────────────────
-  // We only compute spectral flux in a ±2s window around each candidate
-  // (not for the whole file) to keep it fast and relevant.
-  setStatus('detectStatus', 'info', '🧠 Computing spectral features…');
+  setProgress('detectProgress', 54);
+
+  // ── PASS 3d: Spectral centroid — skipped when wCentroid is off
+  const centroidSmooth = new Float32Array(numFrames);
+  if (wCentroid > 0) {
+    setStatus('detectStatus', 'info', '🧠 Computing spectral centroid…');
+    await new Promise(r => setTimeout(r, 10));
+    const centroidFftSize = 512;
+    const centroidBins    = centroidFftSize >> 1;
+    const centroidArr     = new Float32Array(numFrames);
+    for (let f = 0; f < numFrames; f++) {
+      const frame = new Float32Array(centroidFftSize);
+      const s0 = f * hopSize;
+      for (let i = 0; i < centroidFftSize; i++) {
+        const si = s0 + i;
+        frame[i] = si < data0.length ? (data0[si] + data1[si]) * 0.5 : 0;
+      }
+      const mag = realFFTMagnitude(frame, centroidFftSize);
+      let num = 0, den = 0;
+      for (let b = 0; b < centroidBins; b++) { num += b * mag[b]; den += mag[b]; }
+      centroidArr[f] = den > 1e-9 ? num / den : 0;
+      if (f % 3000 === 0) await new Promise(r => setTimeout(r, 0));
+    }
+    const cs = smoothArray(centroidArr, 5);
+    for (let f = 0; f < numFrames; f++) centroidSmooth[f] = cs[f];
+  }
+
+  setProgress('detectProgress', 60);
+
+  // ── PASS 3e: Crest factor / dynamic range — skipped when wDynamic is off
+  const crestSmooth = new Float32Array(numFrames);
+  if (wDynamic > 0) {
+    setStatus('detectStatus', 'info', '🧠 Computing dynamic range…');
+    await new Promise(r => setTimeout(r, 10));
+    const crestWinFr = Math.ceil(0.2 / hopSec);
+    const crestArr   = new Float32Array(numFrames);
+    for (let f = 0; f < numFrames; f++) {
+      let peak = 0, sqSum = 0, cnt = 0;
+      for (let k = -crestWinFr; k <= crestWinFr; k++) {
+        const fi = f + k;
+        if (fi < 0 || fi >= numFrames) continue;
+        const v = rmsArr[fi];
+        if (v > peak) peak = v;
+        sqSum += v * v;
+        cnt++;
+      }
+      const rmsWin = cnt > 0 ? Math.sqrt(sqSum / cnt) : 0;
+      crestArr[f]  = rmsWin > 1e-9 ? peak / rmsWin : 0;
+    }
+    const cs2 = smoothArray(crestArr, 5);
+    for (let f = 0; f < numFrames; f++) crestSmooth[f] = cs2[f];
+  }
+
+  setProgress('detectProgress', 65);
+
+  // ── PASS 4: Spectral flux + HFC + new signals around each quiet-run ────────
+  // We only compute the heavier FFT-based features in a ±2s window around each
+  // candidate (not for the whole file) to keep it fast and relevant.
+  setStatus('detectStatus', 'info', '🧠 Scoring candidates…');
   await new Promise(r => setTimeout(r, 10));
 
   // Helper: get mean magnitude spectrum for a range of frames
@@ -3234,9 +3613,12 @@ async function detectTracksAdvanced() {
     const midT   = run.midFrame * hopSec;
     if (midT < 5 || midT > durSec - 3) continue;
 
-    // ── Energy score: deeper / longer silence = higher score ──
+    // ── Energy score: deeper silence = higher score ──
+    // silLen: centred on avgSilSec — gaps matching the expected length score ~0.5,
+    // longer gaps score higher (up to 1), shorter gaps score lower (min 0).
+    // This is now purely a signal contribution, not a gate.
     const silDepth  = 1 - (rmsSmooth[run.midFrame] / (threshLin + 1e-9));
-    const silLen    = Math.min(1, (run.durationSec - minSilSec) / (minSilSec * 2));
+    const silLen    = Math.min(1, Math.max(0, run.durationSec / (avgSilSec * 2)));
     const eScore    = (silDepth * 0.6 + silLen * 0.4);
 
     // ── Spectral flux: spectrum change across the boundary ──
@@ -3284,21 +3666,115 @@ async function detectTracksAdvanced() {
       hScore = Math.min(1, Math.max(0, (hfcBefore - hfcAfter) / maxHfc * 0.5 + 0.5));
     }
 
-    // ── BPM guard: if strong consistent beats → suppress (drum solo / sparse section) ──
-    // Use mean beat strength in a window around this silence
-    const bWinFr = Math.min(bpmWinFr, Math.floor(minTrkFrames / 2));
-    let meanStrength = 0;
-    const sfStart = Math.max(0, run.start - bWinFr);
-    const sfEnd   = Math.min(numFrames, run.end + bWinFr);
-    for (let f = sfStart; f < sfEnd; f++) meanStrength += strengthPerFrame[f];
-    meanStrength /= (sfEnd - sfStart) || 1;
+    // ── BPM scoring: compare tempo over substantial music windows either side ──
+    // We look 20 s of MUSIC back before the silence and 20 s forward after it.
+    // Using the raw bpmEstimates (not the interpolated per-frame array) we pick
+    // all estimates whose centre falls inside the music window, take their median
+    // BPM and mean strength, then score only when both sides have a reliable
+    // beat (strength > 0.25).  This avoids the interpolation artefact where a
+    // linearly-drifting per-frame value makes the middle of a song look like a
+    // continuous tempo change.
+    const bpmMusicWinFr = Math.ceil(20 / hopSec);  // 20 s of music each side
+    const minBpmStrength = 0.25;                    // autocorr strength gate
 
-    // BPM score: how much the tempo CHANGES across this boundary
-    const bpmBefore = bpmPerFrame[Math.max(0, run.start - Math.floor(bpmHopFr / 2))];
-    const bpmAfter  = bpmPerFrame[Math.min(numFrames - 1, run.end + Math.floor(bpmHopFr / 2))];
+    // Helper: median BPM and mean strength from estimates in a frame range
+    const bpmStatsInRange = (estimates, loFr, hiFr) => {
+      const vals = [], strs = [];
+      for (const e of estimates) {
+        if (e.frameCenter >= loFr && e.frameCenter < hiFr) {
+          vals.push(e.bpm); strs.push(e.strength);
+        }
+      }
+      if (!vals.length) return { bpm: 0, strength: 0 };
+      vals.sort((a, b) => a - b);
+      const med = vals[Math.floor(vals.length / 2)];
+      const str = strs.reduce((s, v) => s + v, 0) / strs.length;
+      return { bpm: med, strength: str };
+    };
+
+    const statsBefore = bpmStatsInRange(bpmEstimates,
+      Math.max(0, run.start - bpmMusicWinFr), run.start);
+    const statsAfter  = bpmStatsInRange(bpmEstimates,
+      run.end, Math.min(numFrames, run.end + bpmMusicWinFr));
+
+    // Beat-guard: strong consistent beat surrounding the silence means it's
+    // likely a drum fill / sparse section, not a track boundary.
+    // Use the wider music window strength rather than just the silence itself.
+    const sfStart = Math.max(0, run.start - bpmMusicWinFr);
+    const sfEnd   = Math.min(numFrames, run.end + bpmMusicWinFr);
+    let meanStrength = (statsBefore.strength + statsAfter.strength) / 2;
+
+    // BPM score: meaningful only when both sides have a reliable tempo reading
     let bScore = 0;
-    if (wBpm > 0 && bpmBefore > 40 && bpmAfter > 40) {
-      bScore = Math.min(1, Math.abs(bpmBefore - bpmAfter) / Math.max(bpmBefore, bpmAfter, 1));
+    if (wBpm > 0
+        && statsBefore.bpm > 40 && statsAfter.bpm > 40
+        && statsBefore.strength >= minBpmStrength
+        && statsAfter.strength  >= minBpmStrength) {
+      bScore = Math.min(1,
+        Math.abs(statsBefore.bpm - statsAfter.bpm) /
+        Math.max(statsBefore.bpm, statsAfter.bpm, 1));
+    }
+
+    // ── Hi-pass BPM score: same approach on the snare/hi-hat band ──
+    let bHpScore = 0;
+    if (wBpmHp > 0) {
+      const hpBefore = bpmStatsInRange(bpmHpEstimates,
+        Math.max(0, run.start - bpmMusicWinFr), run.start);
+      const hpAfter  = bpmStatsInRange(bpmHpEstimates,
+        run.end, Math.min(numFrames, run.end + bpmMusicWinFr));
+      if (hpBefore.bpm > 40 && hpAfter.bpm > 40
+          && hpBefore.strength >= minBpmStrength
+          && hpAfter.strength  >= minBpmStrength) {
+        bHpScore = Math.min(1,
+          Math.abs(hpBefore.bpm - hpAfter.bpm) /
+          Math.max(hpBefore.bpm, hpAfter.bpm, 1));
+      }
+      // Blend hi-pass strength into beat guard
+      const meanHpStr = (hpBefore.strength + hpAfter.strength) / 2;
+      meanStrength = Math.min(meanStrength, Math.max(meanStrength, meanHpStr));
+    }
+
+    // ── Onset density score: drop in onset rate across boundary ──
+    let oScore = 0;
+    if (wOnset > 0) {
+      const win = candidateWindow;
+      let rBefore = 0, rAfter = 0, cntB = 0, cntA = 0;
+      for (let f = Math.max(0, run.start - win); f < run.start; f++) { rBefore += onsetRate[f]; cntB++; }
+      for (let f = run.end; f < Math.min(numFrames, run.end + win); f++) { rAfter += onsetRate[f]; cntA++; }
+      rBefore = cntB > 0 ? rBefore / cntB : 0;
+      rAfter  = cntA > 0 ? rAfter  / cntA : 0;
+      // Score: large drop before (song ending) = high; also large rise after (new song) = high
+      const maxRate = Math.max(rBefore, rAfter, 1e-9);
+      oScore = Math.min(1, Math.abs(rBefore - rAfter) / maxRate);
+    }
+
+    // ── Spectral centroid shift score ──
+    let cScore = 0;
+    if (wCentroid > 0) {
+      const win = candidateWindow;
+      let cBefore = 0, cAfter = 0, cntB = 0, cntA = 0;
+      for (let f = Math.max(0, run.start - win); f < run.start; f++) { cBefore += centroidSmooth[f]; cntB++; }
+      for (let f = run.end; f < Math.min(numFrames, run.end + win); f++) { cAfter += centroidSmooth[f]; cntA++; }
+      cBefore = cntB > 0 ? cBefore / cntB : 0;
+      cAfter  = cntA > 0 ? cAfter  / cntA : 0;
+      const maxC = Math.max(cBefore, cAfter, 1e-9);
+      cScore = Math.min(1, Math.abs(cBefore - cAfter) / maxC * 2);
+    }
+
+    // ── Dynamic range (crest factor) score ──
+    // A track ending compresses (crest drops); a new track opening expands (crest rises).
+    let dScore = 0;
+    if (wDynamic > 0) {
+      const win = candidateWindow;
+      let crBefore = 0, crAfter = 0, cntB = 0, cntA = 0;
+      for (let f = Math.max(0, run.start - win); f < run.start; f++) { crBefore += crestSmooth[f]; cntB++; }
+      for (let f = run.end; f < Math.min(numFrames, run.end + win); f++) { crAfter += crestSmooth[f]; cntA++; }
+      crBefore = cntB > 0 ? crBefore / cntB : 0;
+      crAfter  = cntA > 0 ? crAfter  / cntA : 0;
+      // Expect: crest drops before boundary, rises after → positive score
+      const maxCr = Math.max(crBefore, crAfter, 1e-9);
+      // Asymmetric: drop before is more meaningful than a uniform low
+      dScore = Math.min(1, Math.max(0, (crBefore - crAfter) / maxCr));
     }
 
     // Beat guard: strong consistent beat in a quiet region → not a track boundary.
@@ -3307,9 +3783,19 @@ async function detectTracksAdvanced() {
     const beatSuppression = Math.max(0, (meanStrength - 0.3) / 0.7);  // 0 → 1 ramp
     const guardedEScore   = eScore * (1 - beatSuppression * 0.75);     // suppress up to 75%
 
-    // Weighted fusion
-    const totalW   = (wEnergy + wFlux + wBpm + wHfc) || 1;
-    const rawScore = (guardedEScore * wEnergy + fScore * wFlux + bScore * wBpm + hScore * wHfc) / totalW;
+    // Weighted fusion — all nine signals
+    const totalW   = (wEnergy + wFlux + wBpm + wHfc + wBpmHp + wOnset + wCentroid + wChroma + wDynamic) || 1;
+    const rawScore = (
+      guardedEScore * wEnergy +
+      fScore        * wFlux   +
+      bScore        * wBpm    +
+      hScore        * wHfc    +
+      bHpScore      * wBpmHp  +
+      oScore        * wOnset  +
+      cScore        * wCentroid +
+      0             * wChroma + // chroma computed below per-candidate (heavier)
+      dScore        * wDynamic
+    ) / totalW;
 
     scoredRuns.push({
       time:        midT,
@@ -3317,10 +3803,90 @@ async function detectTracksAdvanced() {
       durationSec: run.durationSec,
       score:       rawScore,
       eScore:      guardedEScore,
-      fScore, hScore, bScore,
+      fScore, hScore, bScore, bHpScore, oScore, cScore, dScore,
       beatSuppression,
+      // store run boundaries for chroma pass below
+      runStart: run.start, runEnd: run.end,
     });
     if (ri % 5 === 0) await new Promise(r => setTimeout(r, 0));
+  }
+
+  setProgress('detectProgress', 78);
+
+  // ── PASS 4b: Chroma / key shift (candidates only) ─────────────────────────
+  // Chroma is expensive (12-bin pitch-class vector via FFT), so we only compute
+  // it for the shortlisted candidates — not the full file.
+  // Cosine distance between before/after chroma vectors measures key change.
+  if (wChroma > 0 && scoredRuns.length > 0) {
+    setStatus('detectStatus', 'info', '🧠 Chroma / key analysis…');
+    await new Promise(r => setTimeout(r, 10));
+
+    const chromaFftSize = 2048;
+    const chromaBins    = chromaFftSize >> 1;
+
+    // Frequency of each FFT bin
+    const binHz = sr / chromaFftSize;
+
+    // Map FFT bin → chroma bin (0-11) using equal temperament, A4 = 440 Hz
+    const binToChroma = new Int8Array(chromaBins).fill(-1);
+    for (let b = 1; b < chromaBins; b++) {
+      const freq = b * binHz;
+      if (freq < 27.5 || freq > 4186) continue; // A0 to C8
+      const midi   = 12 * Math.log2(freq / 440) + 69;
+      binToChroma[b] = ((Math.round(midi) % 12) + 12) % 12;
+    }
+
+    const getChroma = (fStart, fEnd) => {
+      const chroma = new Float32Array(12);
+      let count = 0;
+      for (let f = Math.max(0, fStart); f < Math.min(numFrames, fEnd); f++) {
+        const frame = new Float32Array(chromaFftSize);
+        const s0 = f * hopSize;
+        for (let i = 0; i < chromaFftSize; i++) {
+          const si = s0 + i;
+          const s  = si < data0.length ? (data0[si] + data1[si]) * 0.5 : 0;
+          frame[i] = s * (0.5 - 0.5 * Math.cos(2 * Math.PI * i / (chromaFftSize - 1)));
+        }
+        const mag = realFFTMagnitude(frame, chromaFftSize);
+        for (let b = 0; b < chromaBins; b++) {
+          const c = binToChroma[b];
+          if (c >= 0) chroma[c] += mag[b];
+        }
+        count++;
+      }
+      // L2 normalise
+      let norm = 0;
+      for (let c = 0; c < 12; c++) { if (count > 0) chroma[c] /= count; norm += chroma[c] * chroma[c]; }
+      norm = Math.sqrt(norm);
+      if (norm > 1e-9) for (let c = 0; c < 12; c++) chroma[c] /= norm;
+      return chroma;
+    };
+
+    const chromaWin = Math.ceil(3 / hopSec); // 3 s each side
+    for (let ri = 0; ri < scoredRuns.length; ri++) {
+      const run = scoredRuns[ri];
+      const chromaBefore = getChroma(run.runStart - chromaWin, run.runStart);
+      const chromaAfter  = getChroma(run.runEnd,               run.runEnd + chromaWin);
+      // Cosine similarity → distance
+      let dot = 0;
+      for (let c = 0; c < 12; c++) dot += chromaBefore[c] * chromaAfter[c];
+      const chromaDist = Math.max(0, 1 - dot);   // 0 = same key, 1 = maximally different
+      run.chromaScore  = chromaDist;
+      // Re-compute score including chroma
+      const totalW = (wEnergy + wFlux + wBpm + wHfc + wBpmHp + wOnset + wCentroid + wChroma + wDynamic) || 1;
+      run.score = (
+        run.eScore    * wEnergy   +
+        run.fScore    * wFlux     +
+        run.bScore    * wBpm      +
+        run.hScore    * wHfc      +
+        run.bHpScore  * wBpmHp    +
+        run.oScore    * wOnset    +
+        run.cScore    * wCentroid +
+        chromaDist    * wChroma   +
+        run.dScore    * wDynamic
+      ) / totalW;
+      if (ri % 3 === 0) await new Promise(r => setTimeout(r, 0));
+    }
   }
 
   setProgress('detectProgress', 80);
@@ -3331,8 +3897,8 @@ async function detectTracksAdvanced() {
   // one per cluster instead of the first one that clears the gap.
   scoredRuns.sort((a, b) => a.time - b.time);
 
-  // Score threshold
-  const scoreThreshold = sensitivity * 0.55;
+  // Score threshold — directly from the Score Threshold selector
+  const scoreThreshold = scoreThresholdVal;
 
   // Step 1: group into clusters of runs that are < minTrkSec apart
   const runClusters = [];
@@ -3385,7 +3951,9 @@ async function detectTracksAdvanced() {
 
   setProgress('detectProgress', 92);
 
-  splitPoints    = accepted.map(r => parseFloat(r.time.toFixed(3)));
+  // Apply total-track count constraint (if user specified one)
+  // Pool = all scoredRuns (every silence candidate that was scored)
+  splitPoints    = applyTrackCount(accepted, scoredRuns, durSec, minTrkSec);
   splitConfidence = {};
   const maxScore = accepted.length ? Math.max(...accepted.map(r => r.score)) : 1;
   accepted.forEach(r => {
@@ -3484,7 +4052,7 @@ async function detectTracksAdvanced() {
   setStatus('detectStatus', count > 1 ? 'success' : 'info',
     count > 1
       ? `✓ Found ${count} tracks${bpmNote}${nmCount ? ` · ${nmCount} near-miss${nmCount > 1 ? 'es' : ''} flagged` : ''}.`
-      : `⚠ No boundaries found at current settings. Try Permissive sensitivity or lower Threshold (dB) in Simple mode.`
+      : `⚠ No boundaries found at current settings. Try Permissive score threshold, or lower the Threshold (dB) in Simple mode.`
   );
   btn.disabled = false;
 }
@@ -4656,7 +5224,22 @@ async function applySplitsFromRelease(releaseId, btnEl) {
     updateFileMetaBar();
     setStep(4);
 
-    if (btnEl) { btnEl.disabled = false; btnEl.textContent = '✓ Applied'; btnEl.style.borderColor = 'var(--green)'; btnEl.style.color = 'var(--green)'; }
+    if (btnEl) {
+      btnEl.disabled = false;
+      btnEl.textContent = '✓ Applied';
+      btnEl.style.borderColor = 'var(--green)';
+      btnEl.style.color = 'var(--green)';
+      // Show "Snap to Detections" button next to Applied
+      if (!btnEl.parentNode.querySelector('.btn-snap-detect')) {
+        const snapBtn = document.createElement('button');
+        snapBtn.className = 'btn-snap-detect btn';
+        snapBtn.textContent = '⟲ Snap to Detections';
+        snapBtn.title = 'Shift each MusicBrainz split to the nearest detected silence candidate within ±10 s';
+        snapBtn.style.cssText = 'margin-left:0.5rem;font-size:0.7rem;padding:0.2rem 0.6rem;border-color:var(--amber);color:var(--amber)';
+        snapBtn.onclick = function(e) { e.stopPropagation(); snapMBSplitsToDetections(snapBtn); };
+        btnEl.insertAdjacentElement('afterend', snapBtn);
+      }
+    }
 
     const status = document.getElementById('searchStatus') || document.getElementById('bulkSearchStatus');
     if (status) {
@@ -4666,6 +5249,135 @@ async function applySplitsFromRelease(releaseId, btnEl) {
   } catch(e) {
     if (btnEl) { btnEl.disabled = false; btnEl.textContent = '⚡ Apply Splits'; }
     alert(`Could not apply splits: ${e.message}`);
+  }
+}
+
+// ── Snap MB splits to nearest silence candidates ───────────────────────────
+// Runs a quick RMS silence scan and snaps each current split point to the
+// nearest silence midpoint within ±10 s.
+async function snapMBSplitsToDetections(snapBtn) {
+  if (!audioBuffer || !splitPoints.length) return;
+  if (snapBtn) { snapBtn.disabled = true; snapBtn.textContent = '⏳ Scanning…'; }
+
+  try {
+    const data0 = audioBuffer.getChannelData(0);
+    const data1 = audioBuffer.numberOfChannels > 1 ? audioBuffer.getChannelData(1) : data0;
+    const sr      = audioBuffer.sampleRate;
+    const winSize = Math.floor(0.02 * sr);
+    const numW    = Math.floor(data0.length / winSize);
+
+    // Build RMS array once — reused across passes
+    const rms = new Float32Array(numW);
+    for (let w = 0; w < numW; w++) {
+      let sum = 0;
+      for (let i = 0; i < winSize; i++) {
+        const v = (data0[w * winSize + i] + data1[w * winSize + i]) * 0.5;
+        sum += v * v;
+      }
+      rms[w] = Math.sqrt(sum / winSize);
+      if (w % 6000 === 0) await new Promise(r => setTimeout(r, 0));
+    }
+
+    // Scan for silence candidates given threshold, min-silence, and a looseness floor
+    function scanCandidates(threshDb, minSilSec, silFloor) {
+      const threshLin = Math.pow(10, threshDb / 20);
+      const minSilW   = Math.floor(minSilSec * sr / winSize);
+      const result    = [];
+      let inSil = false, silStart = 0;
+      for (let w = 0; w < numW; w++) {
+        if (rms[w] < threshLin) {
+          if (!inSil) { inSil = true; silStart = w; }
+        } else {
+          if (inSil) {
+            const dur = w - silStart;
+            if (dur >= minSilW * silFloor) {
+              const midSec = ((silStart + dur * 0.8) * winSize) / sr;
+              if (midSec > 5 && midSec < audioBuffer.duration - 2) result.push(midSec);
+            }
+            inSil = false;
+          }
+        }
+      }
+      if (inSil) {
+        const dur = numW - silStart;
+        if (dur >= Math.floor(minSilSec * sr / winSize) * silFloor) {
+          const midSec = ((silStart + dur * 0.8) * winSize) / sr;
+          if (midSec > 5 && midSec < audioBuffer.duration - 2) result.push(midSec);
+        }
+      }
+      return result;
+    }
+
+    // Pass 1: user's current Simple settings with a loose silence floor (25% of min)
+    const userThresh = parseFloat(document.getElementById('silenceThreshold')?.value) || -38;
+    const userMinSil = parseFloat(document.getElementById('minSilence')?.value)        || 0.8;
+    let candidates   = scanCandidates(userThresh, userMinSil, 0.25);
+    let usedSettings = 'current';
+
+    // Pass 2: if not enough candidates to cover all splits, retry with Live preset
+    // settings (-27 dB threshold, 0.5 s min silence, very loose floor)
+    if (candidates.length < splitPoints.length) {
+      const liveCandidates = scanCandidates(-27, 0.5, 0.2);
+      if (liveCandidates.length > candidates.length) {
+        candidates   = liveCandidates;
+        usedSettings = 'live';
+      }
+    }
+
+    if (!candidates.length) {
+      if (snapBtn) { snapBtn.disabled = false; snapBtn.textContent = '⟲ Snap to Detections'; }
+      alert('No silence candidates found even with Live settings. The recording may have very little silence between tracks.');
+      return;
+    }
+
+    // Snap each current split to its nearest candidate within ±10 s
+    pushUndo();
+    const WINDOW = 10;
+    const mbSplits = splitPoints.slice();
+    const snapped = mbSplits.map(sp => {
+      let best = null, bestDist = Infinity;
+      for (const c of candidates) {
+        const d = Math.abs(c - sp);
+        if (d < WINDOW && d < bestDist) { bestDist = d; best = c; }
+      }
+      return { orig: sp, snapped: best !== null ? parseFloat(best.toFixed(3)) : sp, dist: bestDist };
+    });
+
+    // Deduplicate: if two MB splits snapped to the same candidate keep the closer one
+    const seen = new Map();
+    for (const s of snapped) {
+      const k = s.snapped.toFixed(3);
+      if (!seen.has(k) || s.dist < seen.get(k).dist) seen.set(k, s);
+    }
+    const finalSplits = [...seen.values()]
+      .map(s => s.snapped)
+      .sort((a, b) => a - b);
+
+    splitPoints = finalSplits;
+    splitConfidence = {};
+    finalSplits.forEach(t => { splitConfidence[t.toFixed(4)] = 0.85; });
+
+    rebuildSegments();
+    renderTrackList();
+    drawWaveform();
+    drawOverview();
+
+    const shifted = snapped.filter(s => Math.abs(s.snapped - s.orig) > 0.05).length;
+    const fallbackNote = usedSettings === 'live' ? ' (used Live settings — not enough candidates at current threshold)' : '';
+    if (snapBtn) {
+      snapBtn.disabled = false;
+      snapBtn.textContent = `✓ Snapped (${shifted} shifted)`;
+      snapBtn.style.borderColor = 'var(--green)';
+      snapBtn.style.color = 'var(--green)';
+    }
+    const status = document.getElementById('searchStatus') || document.getElementById('bulkSearchStatus');
+    if (status) {
+      status.className = 'status success';
+      status.textContent = `✓ Snapped ${finalSplits.length} split${finalSplits.length !== 1 ? 's' : ''} — ${shifted} shifted to nearest silence candidate${fallbackNote}.`;
+    }
+  } catch(e) {
+    if (snapBtn) { snapBtn.disabled = false; snapBtn.textContent = '⟲ Snap to Detections'; }
+    alert(`Snap failed: ${e.message}`);
   }
 }
 
@@ -5404,6 +6116,8 @@ function applyListTracks() {
 document.addEventListener('DOMContentLoaded', () => {
   const overlay = document.getElementById('listTracksOverlay');
   if (overlay) overlay.addEventListener('click', e => { if (e.target === overlay) closeListTracks(); });
+  // Initialise recording type to studio (syncs simple fields + advanced weights)
+  setRecordingType('studio');
 });
 
 </script>
