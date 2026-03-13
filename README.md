@@ -1,9 +1,13 @@
 # Audio File Splitter
-Vinyl &amp; Tape Audio File Splitter is a single-file browser tool for splitting vinyl and cassette recordings into individual tracks, tagging them with metadata from MusicBrainz, and exporting them as WAV files or FFmpeg scripts.
+Vinyl &amp; Tape Audio File Splitter is a single-file browser tool for:
+- splitting recordings into individual tracks, 
+- tagging them with metadata, and 
+- exporting them as WAV files or FFmpeg scripts.
 
-No installation. No uploads. Runs in the browser. Optional song recognition requires third-party connection.
-
-The tool is divided into 5 sections.
+No installation. 
+No uploads. 
+Runs in the browser. 
+Optional song recognition requires third-party connection.
 
 ## 1. Add an audio file.
 (MP3, WAV, FLAC, OGG, M4A). Large VBR MP3s are handled via chunked decoding.
@@ -29,7 +33,8 @@ Ability to review each proposed split location to listen to three seconds before
 
 All metadata search uses the [MusicBrainz](https://musicbrainz.org) public API (CC0 licence). No key required. Requests identify themselves as `VinylSplitter/1.0` per MusicBrainz's usage guidelines.
 
-## 5. Identify unknown tracks by sending an audio sample to [AudD](https://audd.io) or [Shazam via RapidAPI](https://rapidapi.com/apidojo/api/shazam). Requires your own API key.
+## 5. Identify unknown tracks
+Using your own API key, sending an audio sample to [AudD](https://audd.io) or [Shazam via RapidAPI](https://rapidapi.com/apidojo/api/shazam). 
 
 ## 6. Export 
 ### Formats
