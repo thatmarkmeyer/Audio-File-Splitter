@@ -1298,6 +1298,42 @@
       scrollbar-color: var(--border) transparent;
     }
   }
+
+  /* ── Spectrogram ──────────────────────────────────────────────────────────── */
+  #spectrogramWrap {
+    display: none;
+    position: relative;
+    background: #05060e;
+    border-bottom: 1px solid var(--border);
+    cursor: crosshair;
+  }
+  #spectrogramCanvas {
+    display: block;
+    width: 100%;
+    height: 150px;
+    image-rendering: pixelated;
+  }
+  #spectrogramFreqAxis {
+    position: absolute;
+    top: 0; left: 0; bottom: 0;
+    width: 38px;
+    pointer-events: none;
+    font-family: 'DM Mono', monospace;
+    font-size: 7px;
+    color: rgba(180,220,255,0.55);
+  }
+  #spectrogramLoading {
+    position: absolute;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.68rem;
+    color: rgba(145,243,223,0.55);
+    background: rgba(5,6,14,0.82);
+  }
+  #spectrogramLoading.active { display: flex; }
 </style>
 </head>
 <body>
@@ -1367,11 +1403,16 @@
         <canvas id="waveformOverview" title="Click to jump to position"></canvas>
         <canvas id="waveformCanvas"></canvas>
         <div id="rcPlayhead"></div>
+        <div id="spectrogramWrap">
+          <canvas id="spectrogramCanvas"></canvas>
+          <canvas id="spectrogramFreqAxis" style="width:38px;height:100%;position:absolute;top:0;left:0"></canvas>
+          <div id="spectrogramLoading">Building spectrogram…</div>
+        </div>
         <div class="waveform-scrollbar-row">
           <input type="range" id="waveformScrollbar" min="0" max="1000" value="0" step="1">
         </div>
         <div class="waveform-toolbar">
-          <button class="wt-btn" id="btnPlayView" onclick="togglePlayView()" title="Play from start of visible waveform area">▶</button>
+          <button class="wt-btn" id="btnPlayView" onclick="togglePlayView()" title="Play from start of visible waveform area" style="min-width:2rem;text-align:center">▶</button>
           <div class="wt-sep"></div>
           <button class="wt-btn" id="btnPrevSplit" onclick="navSplit(-1)" title="Jump to previous split (←)">◀ Prev</button>
           <button class="wt-btn" id="btnNextSplit" onclick="navSplit(+1)" title="Jump to next split (→)">Next ▶</button>
@@ -1382,6 +1423,8 @@
           <span class="wt-zoom-label" id="zoomLabel">1×</span>
           <div class="wt-sep"></div>
           <button class="wt-btn" id="btnInstructions" onclick="toggleWaveformInstructions()" title="Show/hide waveform instructions">Instructions</button>
+          <div class="wt-sep"></div>
+          <button class="wt-btn" id="btnSpectrogram" onclick="toggleSpectrogram()" title="Toggle spectrogram (frequency vs time) — scroll/click/right-click work the same as the waveform">Spectrogram</button>
           <div class="wt-sep"></div>
           <span class="wt-mouse-hint" title="Left-click empty area to add a split">
             <span class="wt-mouse-draw wt-mouse-draw-left"><span class="wt-mouse-half"></span></span> split
@@ -1434,11 +1477,11 @@
         <button class="btn btn-primary" id="detectBtn" onclick="detectTracks()">Detect</button>
         <div class="field" style="max-width:120px;min-width:90px;flex:0 1 120px">
           <label>Threshold (dB)</label>
-          <input type="number" id="silenceThreshold" value="-40" min="-80" max="-10" step="1">
+          <input type="number" id="silenceThreshold" value="-45" min="-80" max="-10" step="1">
         </div>
         <div class="field" style="max-width:130px;min-width:110px;flex:0 1 130px">
           <label>Min Silence (s)</label>
-          <input type="number" id="minSilence" value="1.5" min="0.3" max="10" step="0.1">
+          <input type="number" id="minSilence" value="0.8" min="0.3" max="10" step="0.1">
         </div>
         <div class="field" style="max-width:100px;min-width:80px;flex:0 1 100px">
           <label>Min Track (s)</label>
@@ -1451,16 +1494,10 @@
             title="First track number — set to e.g. 4 for Side B of a 3-track-per-side album">
         </div>
         <div class="field" style="max-width:85px;min-width:65px;flex:0 1 85px">
-          <label title="Expected number of tracks on this side. Leave blank to detect all.">Total Tracks</label>
+          <label title="Estimated number of tracks on this side — detection will iterate thresholds until the result falls within this range.">Est. Tracks</label>
           <input type="text" id="totalTracks" value="" placeholder="Unk"
             style="width:100%;text-align:center"
-            title="Enter a number to select the best N splits, or leave blank to use all detected splits">
-        </div>
-        <div class="field" style="max-width:75px;min-width:60px;flex:0 1 75px;justify-content:flex-end">
-          <label style="visibility:hidden">.</label>
-          <button class="btn" id="estimateBtn" onclick="toggleEstimate()"
-            title="Estimate mode: accept the best N ± range splits where range = round((N+5)/3). Click to toggle."
-            style="font-size:0.65rem;padding:0.22rem 0.55rem;white-space:nowrap">Estimate</button>
+            title="Enter an estimated number of tracks. Detection will adjust thresholds automatically to match.">
         </div>
       </div>
 
@@ -1490,16 +1527,10 @@
               oninput="setStartTrackNum(this.value)">
           </div>
           <div class="field" style="max-width:85px;min-width:65px;flex:0 1 85px">
-            <label title="Expected number of tracks on this side. Leave blank to detect all.">Total Tracks</label>
+            <label title="Estimated number of tracks on this side — detection will iterate thresholds until the result falls within this range.">Est. Tracks</label>
             <input type="text" id="advTotalTracks" value="" placeholder="Unk"
               style="width:100%;text-align:center"
-              title="Enter a number to select the best N splits, or leave blank to use all detected splits">
-          </div>
-          <div class="field" style="max-width:75px;min-width:60px;flex:0 1 75px;justify-content:flex-end">
-            <label style="visibility:hidden">.</label>
-            <button class="btn" id="advEstimateBtn" onclick="toggleEstimate()"
-              title="Estimate mode: accept the best N ± range splits where range = round((N+5)/3). Click to toggle."
-              style="font-size:0.65rem;padding:0.22rem 0.55rem;white-space:nowrap">Estimate</button>
+              title="Enter an estimated number of tracks. Detection will adjust score threshold automatically to match.">
           </div>
         </div>
         <div style="padding:0.75rem 1rem;background:rgba(145,243,223,0.04);border:1.5px solid var(--border);border-radius:8px;margin-bottom:0.6rem">
@@ -1516,6 +1547,7 @@
           <input type="range" id="wCentroid" min="0" max="2" step="0.25" value="0.75" style="display:none">
           <input type="range" id="wChroma"   min="0" max="2" step="0.25" value="0.75" style="display:none">
           <input type="range" id="wDynamic"  min="0" max="2" step="0.25" value="0.75" style="display:none">
+          <input type="range" id="wCrowd"    min="0" max="2" step="0.25" value="0"    style="display:none">
           <!-- two-column button grid -->
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.3rem 1.4rem">
             <div class="sw-row" data-id="wEnergy"   data-val="1.75" data-label="🔇 Silence / energy"   title="Detects quiet gaps between tracks"></div>
@@ -1527,6 +1559,7 @@
             <div class="sw-row" data-id="wCentroid" data-val="0.75" data-label="☀️ Spectral centroid"   title="Measures shift in tonal brightness"></div>
             <div class="sw-row" data-id="wChroma"   data-val="0.75" data-label="🎹 Key / chroma"        title="Detects key or tonal centre change"></div>
             <div class="sw-row" data-id="wDynamic"  data-val="0.75" data-label="📊 Dynamic range"       title="Detects fade-out via crest factor drop"></div>
+            <div class="sw-row" data-id="wCrowd"    data-val="0"    data-label="👏 Crowd energy"         title="Detects crowd cheering before boundary (live shows)"></div>
           </div>
         </div>
         <script>
@@ -1568,7 +1601,7 @@
               b.textContent   = lvl[1];
               b.title = lvl[0]===0 ? 'Off' : lvl[0]===0.75 ? 'Low' : lvl[0]===1.25 ? 'Medium' : 'High';
               b.style.cssText = 'width:20px;height:20px;border-radius:4px;border:1px solid transparent;cursor:pointer;font-size:0.62rem;line-height:1;padding:0;transition:all 0.1s';
-              (function(v){ b.onclick = function(){ setWeight(id, v); }; })(lvl[0]);
+              (function(v){ b.onclick = function(){ setWeight(id, v); if (typeof reapplyAdvancedWeights === 'function' && currentAlgo === 'advanced') reapplyAdvancedWeights(); }; })(lvl[0]);
               btns.appendChild(b);
             });
             el.appendChild(btns);
@@ -1576,9 +1609,9 @@
           }
           window.applyPreset = function(name) {
             var presets = {
-              studio: {wEnergy:1.75, wFlux:1.25, wBpm:0.75, wHfc:1.25, wBpmHp:0.75, wOnset:0.75, wCentroid:0.75, wChroma:0.75, wDynamic:0.75},
-              live:   {wEnergy:0.75, wFlux:1.25, wBpm:0.75, wHfc:0.75, wBpmHp:0.75, wOnset:1.75, wCentroid:1.75, wChroma:1.75, wDynamic:0   },
-              vinyl:  {wEnergy:1.25, wFlux:1.25, wBpm:1.25, wHfc:1.25, wBpmHp:1.25, wOnset:1.25, wCentroid:0.75, wChroma:0.75, wDynamic:1.25},
+              studio: {wEnergy:1.75, wFlux:1.25, wBpm:0.75, wHfc:1.25, wBpmHp:0.75, wOnset:0.75, wCentroid:0.75, wChroma:0.75, wDynamic:0.75, wCrowd:0   },
+              live:   {wEnergy:0.75, wFlux:1.25, wBpm:0.75, wHfc:0.75, wBpmHp:0.75, wOnset:1.75, wCentroid:1.75, wChroma:1.75, wDynamic:0,    wCrowd:1.75},
+              vinyl:  {wEnergy:1.25, wFlux:1.25, wBpm:1.25, wHfc:1.25, wBpmHp:1.25, wOnset:1.25, wCentroid:0.75, wChroma:0.75, wDynamic:1.25, wCrowd:0.75},
             };
             var p = presets[name]; if (!p) return;
             Object.keys(p).forEach(function(id){ setWeight(id, p[id]); });
@@ -1608,49 +1641,58 @@
     <!-- 2c: Album Search + Apply Splits -->
     <div class="detect-subsection" style="border-bottom:none;padding-bottom:0">
       <div class="detect-subsection-label">2c — Search for Album Info &amp; Assign Splits by Album Data</div>
-      <p style="font-size:0.75rem;color:var(--groove);margin-bottom:0.9rem;line-height:1.6">Search MusicBrainz for the album, then optionally apply track durations as split points and populate metadata.</p>
-      <div class="controls-row">
-        <div class="field" style="flex:2">
-          <label>Artist Name</label>
-          <input type="text" id="artistInput" placeholder="e.g. Fleetwood Mac" onkeydown="if(event.key==='Enter')searchMusicBrainz()">
+
+      <!-- Single combined metadata + search box -->
+      <div style="background:rgba(145,243,223,0.03);border:1.5px solid var(--border);border-radius:10px;padding:0.9rem 1rem 0.8rem;margin-bottom:0.9rem">
+        <div class="controls-row" style="margin-top:0;flex-wrap:wrap">
+          <div class="field" style="flex:2;min-width:130px">
+            <label>Album Artist</label>
+            <input type="text" id="metaAlbumArtist" placeholder="Album artist" onkeydown="if(event.key==='Enter')searchMusicBrainz()">
+          </div>
+          <div class="field" style="flex:2;min-width:130px">
+            <label>Artist</label>
+            <input type="text" id="metaArtist" placeholder="Artist" onkeydown="if(event.key==='Enter')searchMusicBrainz()">
+          </div>
+          <div class="field" style="flex:3;min-width:160px">
+            <label>Album</label>
+            <input type="text" id="metaAlbum" placeholder="Album title" onkeydown="if(event.key==='Enter')searchMusicBrainz()">
+          </div>
         </div>
-        <div class="field" style="flex:2">
-          <label>Album / Release Title</label>
-          <input type="text" id="albumInput" placeholder="e.g. Rumours" onkeydown="if(event.key==='Enter')searchMusicBrainz()">
+        <div class="controls-row" style="margin-top:0.5rem;flex-wrap:wrap;align-items:flex-end">
+          <div class="field" style="max-width:90px;min-width:70px;flex:0 1 90px">
+            <label>Year</label>
+            <input type="text" id="metaYear" placeholder="e.g. 1977">
+          </div>
+          <div class="field" style="flex:2;min-width:120px">
+            <label>Genre <span style="font-size:0.6rem;color:var(--groove)">(use ; for multiple)</span></label>
+            <input type="text" id="metaGenre" placeholder="e.g. Reggae; Ska">
+          </div>
+          <div style="display:flex;gap:0.4rem;align-items:flex-end;flex-shrink:0;flex-wrap:wrap">
+            <button class="btn btn-primary" id="searchBtn" onclick="searchMusicBrainz()" style="white-space:nowrap"><span class="search-icon">🔎</span> Search MB</button>
+            <button class="btn-bulk" onclick="applyBulkSmart()" title="Apply these metadata fields to all tracks in the Review panel" style="padding:0.6rem 0.9rem">→ Apply</button>
+            <button class="btn-bulk" id="btnEditEachTrack" onclick="toggleEditEachTrack()" style="background:#5a4a20;padding:0.6rem 0.9rem" title="Open per-track metadata editor for every track">🎤 Edit by Track</button>
+          </div>
         </div>
-        <button class="btn btn-primary" id="searchBtn" onclick="searchMusicBrainz()"><span class="search-icon">🔎</span> Search</button>
+        <div style="font-size:0.72rem;color:var(--groove);margin-top:0.55rem">Track titles from MusicBrainz appear in the Review card — edit them there. → Apply pushes these fields to all tracks.</div>
       </div>
-      <div id="searchStatus" class="status"></div>
+
+      <!-- Hidden alias inputs — legacy JS reads artistInput / albumInput -->
+      <input type="hidden" id="artistInput">
+      <input type="hidden" id="albumInput">
+      <!-- Hidden bulk fields — kept so JS references don't error; synced from meta box -->
+      <input type="hidden" id="bulkArtist">
+      <input type="hidden" id="bulkAlbum">
+      <input type="hidden" id="bulkYear">
+      <input type="hidden" id="bulkGenre">
+
+      <div id="searchStatus" class="status" style="margin-top:0"></div>
       <div id="searchResults"></div>
 
-      <div id="metaFields" style="display:none; margin-top:1.2rem">
-        <div style="border-top:1px solid var(--border); padding-top:1.2rem; margin-top:0.8rem">
-          <div class="card-title" style="font-size:1rem; margin-bottom:0.8rem">Album Metadata</div>
-          <div class="controls-row">
-            <div class="field"><label>Artist</label><input type="text" id="metaArtist"></div>
-            <div class="field"><label>Album</label><input type="text" id="metaAlbum"></div>
-            <div class="field" style="max-width:100px"><label>Year</label><input type="text" id="metaYear"></div>
-            <div class="field" style="max-width:160px"><label>Genre <span style="font-size:0.6rem;color:var(--groove)">(use ; for multiple)</span></label><input type="text" id="metaGenre" placeholder="e.g. Reggae; Ska"></div>
-          </div>
-          <div style="font-size:0.72rem; color:var(--groove); margin-top:0.6rem">Track titles pulled from MusicBrainz are shown in the Review card below — you can edit them there.</div>
-        </div>
-      </div>
+      <!-- metaFields / bulkApplyBar kept as no-op divs for JS compatibility -->
+      <div id="metaFields" style="display:none"></div>
+      <div id="bulkApplyBar" style="display:none"></div>
 
-      <!-- Bulk apply bar (shown after detection) -->
-      <div class="bulk-apply-bar" id="bulkApplyBar" style="display:none; margin-top:0.9rem">
-        <div style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:center;width:100%">
-          <input type="text" id="bulkArtist" placeholder="Artist (leave blank to skip)" style="flex:2;min-width:110px">
-          <input type="text" id="bulkAlbum"  placeholder="Album (leave blank to skip)"  style="flex:2;min-width:110px">
-        </div>
-        <div style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:center;width:100%">
-          <input type="text" id="bulkYear"  placeholder="Year (leave blank to skip)"  style="flex:1;min-width:80px">
-          <input type="text" id="bulkGenre" placeholder="Genre (e.g. Reggae; Ska)" style="flex:1;min-width:100px">
-          <button class="btn-bulk" onclick="applyBulkSmart()">→ Apply</button>
-          <button class="btn-bulk" id="btnEditEachTrack" onclick="toggleEditEachTrack()" style="background:#5a4a20">🎤 Edit by Track</button>
-          <button class="btn-bulk" id="btnBulkSearch" onclick="bulkSearch()" style="background:var(--groove)"><span class="search-icon">🔎</span> Search MB</button>
-        </div>
-      </div>
-      <!-- Inline MusicBrainz results from bulk search -->
+      <!-- Inline MusicBrainz results -->
       <div id="bulkSearchPanel" style="display:none; margin-top:0.8rem; padding:0.8rem 1rem; background:rgba(145,243,223,0.05); border:1.5px solid var(--border); border-radius:8px;">
         <div id="bulkSearchStatus" class="status" style="margin-top:0"></div>
         <div id="bulkSearchResults" style="margin-top:0.5rem"></div>
@@ -1684,30 +1726,45 @@
       <p style="margin:0 0 0.5rem">A short audio sample (~15 seconds) from the middle of each track is sent to the selected service. If the song is recognised, its title, artist, album and year are filled in automatically.</p>
       <p style="margin:0 0 0.5rem"><strong>AudD</strong> — sign up for a free key at <a href="https://dashboard.audd.io/" target="_blank" style="color:var(--amber)">dashboard.audd.io ↗</a>.</p>
       <p style="margin:0 0 0.5rem"><strong>Shazam via RapidAPI</strong> — sign up at <a href="https://rapidapi.com/apidojo/api/shazam" target="_blank" style="color:var(--amber)">RapidAPI ↗</a> and subscribe to the Shazam API. Uses an unofficial endpoint.</p>
-      <p style="margin:0">Your API key is never stored — it lives only in the page for the duration of your session. Use <strong>Identify All Untagged</strong> to process every track that still has a default title.</p>
+      <p style="margin:0">Your API key is never stored — it lives only in the page for the duration of your session. Use <strong>Identify All/Selected Untagged</strong> to process every untagged track, or tick checkboxes in the Review card to target specific tracks.</p>
     </div>
     <div style="display:flex; gap:0.6rem; flex-wrap:wrap; align-items:flex-start">
       <div style="display:flex; gap:0; border:1.5px solid var(--border); border-radius:6px; overflow:hidden; flex-shrink:0; align-self:flex-start; margin-top:1.4rem">
-        <button id="svcAudd"   onclick="setRecogService('audd')"   class="svc-tab active" title="AudD — free API key at dashboard.audd.io">AudD</button>
-        <button id="svcShazam" onclick="setRecogService('shazam')" class="svc-tab"        title="Shazam via RapidAPI — unofficial but widely used">Shazam</button>
+        <button id="svcShazam" onclick="setRecogService('shazam')" class="svc-tab active" title="Shazam via RapidAPI — unofficial but widely used">Shazam</button>
+        <button id="svcAudd"   onclick="setRecogService('audd')"   class="svc-tab"        title="AudD — free API key at dashboard.audd.io">AudD</button>
       </div>
-      <div id="auddKeyField" style="flex:2; min-width:180px">
-        <div class="field">
-          <label>AudD API Key <a href="https://dashboard.audd.io/" target="_blank" style="color:var(--amber);font-size:0.6rem">Get free key ↗</a></label>
-          <input type="password" id="auddKey" placeholder="Your AudD API key" style="font-size:0.75rem">
-        </div>
-      </div>
-      <div id="shazamKeyField" style="display:none; flex:2; min-width:180px">
+      <div id="shazamKeyField" style="flex:2; min-width:180px">
         <div class="field">
           <label>RapidAPI Key <a href="https://rapidapi.com/apidojo/api/shazam" target="_blank" style="color:var(--amber);font-size:0.6rem">Get key ↗</a></label>
           <input type="password" id="shazamKey" placeholder="Your RapidAPI key" style="font-size:0.75rem">
         </div>
       </div>
+      <div id="auddKeyField" style="display:none; flex:2; min-width:180px">
+        <div class="field">
+          <label>AudD API Key <a href="https://dashboard.audd.io/" target="_blank" style="color:var(--amber);font-size:0.6rem">Get free key ↗</a></label>
+          <input type="password" id="auddKey" placeholder="Your AudD API key" style="font-size:0.75rem">
+        </div>
+      </div>
       <div style="align-self:flex-end">
-        <button class="btn btn-secondary" onclick="identifyAllTracks()" id="btnIdentifyAll" style="white-space:nowrap; font-size:0.75rem; padding:0.45rem 0.9rem;"><span class="search-icon">🔍</span> Identify All Untagged</button>
+        <button class="btn btn-secondary" onclick="identifyAllTracks()" id="btnIdentifyAll" style="white-space:nowrap; font-size:0.75rem; padding:0.45rem 0.9rem;"><span class="search-icon">🔍</span> Identify All/Selected Untagged</button>
       </div>
     </div>
     <div id="acrStatus" class="status" style="margin-top:0.5rem"></div>
+
+    <!-- Essentia BPM detection -->
+    <div style="margin-top:1rem;padding-top:0.9rem;border-top:1px solid var(--border)">
+      <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap">
+        <div style="flex:1;min-width:0">
+          <div style="font-family:'DM Mono',monospace;font-size:0.72rem;font-weight:600;color:var(--groove);margin-bottom:0.25rem">Detect &amp; Apply BPM to Track Metadata</div>
+          <div style="font-size:0.68rem;color:var(--wax);line-height:1.55">Uses Essentia.js (RhythmExtractor2013) — more accurate than the detection algorithm estimate. Loads ~220 KB from CDN on first use. BPM is written to each track's metadata and editable in the Review panel.</div>
+        </div>
+        <button id="essentiaBpmApplyBtn" onclick="applyEssentiaBpmToTracks()"
+          style="font-family:'DM Mono',monospace;font-size:0.72rem;letter-spacing:0.04em;padding:0.45rem 1rem;border:1.5px solid var(--border);border-radius:6px;background:rgba(145,243,223,0.07);color:var(--groove);cursor:pointer;white-space:nowrap;flex-shrink:0;transition:all 0.15s">
+          ♩ Detect &amp; Apply BPM
+        </button>
+      </div>
+      <div id="essentiaBpmStatus" class="status" style="margin-top:0.5rem"></div>
+    </div>
   </div><!-- /cardRecog -->
 
   <!-- 5: Export -->
@@ -1820,61 +1877,49 @@ function setStartTrackNum(val) {
   if (trackSegments.length) renderTrackList();
 }
 
-// ── Total Tracks / Estimate ────────────────────────────────────────────────
-let estimateMode = false;
+// ── Estimated Tracks ──────────────────────────────────────────────────────
+// When the user enters an estimated track count, detection iterates its
+// thresholds until the result falls within the acceptable range.
+// Range = ± round((n+5)/3) — so 4 tracks → range ±3 → accepts 1–7,
+// 8 tracks → range ±4 → accepts 4–12, etc.
 
-function toggleEstimate() {
-  estimateMode = !estimateMode;
-  ['estimateBtn', 'advEstimateBtn'].forEach(id => {
-    const btn = document.getElementById(id);
-    if (!btn) return;
-    btn.classList.toggle('btn-primary', estimateMode);
-    btn.title = estimateMode
-      ? 'Estimate ON — will find best N ± range splits. Click to turn off.'
-      : 'Estimate mode: accept the best N ± range splits where range = round((N+5)/3). Click to toggle.';
-  });
-}
-
-// Read total tracks from whichever panel is active; return {n, estimate}
-// n = null means "use all detected splits"
-function getTotalTracksParams() {
+function getEstimatedTracks() {
   const raw = currentAlgo === 'advanced'
     ? (document.getElementById('advTotalTracks') || {}).value
     : (document.getElementById('totalTracks') || {}).value;
   const n = parseInt(raw);
-  if (isNaN(n) || n < 1) return { n: null, estimate: estimateMode };
-  return { n, estimate: estimateMode };
+  if (isNaN(n) || n < 1) return null;
+  return n;
 }
 
-// Given an array of accepted splits (objects with .score and .time, or plain seconds)
-// and all scoredCandidates (with .score and .time), apply the total-track constraint.
-// Returns a final array of split times (seconds).
-//
-// If n is given and !estimate: pick the best n splits by score (subject to minTrkSec spacing).
-// If n is given and  estimate: n ± range where range = round((n+5)/3); pick the best
-//   count in [n-range, n+range] that scores highest as a set.
-// If n is null: return accepted as-is (unchanged behaviour).
+// Returns [lo, hi] acceptable track count range given estimated n.
+function estimateRange(n) {
+  const range = Math.round((n + 5) / 3);
+  return [Math.max(1, n - range), n + range];
+}
+
+// Given an array of accepted split objects (with .time and .score/.silDuration)
+// and all candidates, pick the best count within [lo, hi] by mean score.
+// If n is null (no estimate given) just return accepted as-is.
 function applyTrackCount(acceptedRuns, allCandidates, durSec, minTrkSec) {
-  const { n, estimate } = getTotalTracksParams();
+  const n = getEstimatedTracks();
   if (n === null) {
-    // No count specified — use whatever detection produced
     return acceptedRuns.map(r => typeof r === 'number' ? r : parseFloat(r.time.toFixed(3)));
   }
 
-  // We need n splits → n+1 tracks.  Build a pool of all scored candidates,
-  // sorted best-score first, then greedily pick while respecting minTrkSec.
-  // For simple mode, candidates may lack .score; use silDuration as proxy.
+  const [lo, hi] = estimateRange(n);
+
+  // Build a scored pool from all candidates
   const pool = allCandidates
     .map(r => ({
       time:  typeof r === 'number' ? r : r.time,
-      score: r.score  !== undefined ? r.score
+      score: r.score !== undefined ? r.score
            : r.silDuration !== undefined ? r.silDuration
            : 0,
     }))
     .filter(r => r.time >= 5 && r.time <= durSec - 5)
-    .sort((a, b) => b.score - a.score);   // best score first
+    .sort((a, b) => b.score - a.score);
 
-  // Greedy pick respecting minTrkSec, up to maxN splits
   function greedyPick(maxN) {
     const taken = [];
     for (const cand of pool) {
@@ -1886,24 +1931,15 @@ function applyTrackCount(acceptedRuns, allCandidates, durSec, minTrkSec) {
     return taken.sort((a, b) => a.time - b.time);
   }
 
-  if (!estimate) {
-    // Exact: pick best n
-    const picked = greedyPick(n);
-    return picked.map(r => parseFloat(r.time.toFixed(3)));
-  } else {
-    // Estimate: try all counts in [n-range, n+range], pick the set with highest mean score
-    const range = Math.round((n + 5) / 3);
-    const lo = Math.max(1, n - range);
-    const hi = n + range;
-    let bestSet = [], bestMean = -1;
-    for (let cnt = lo; cnt <= hi; cnt++) {
-      const set = greedyPick(cnt);
-      if (!set.length) continue;
-      const mean = set.reduce((s, r) => s + r.score, 0) / set.length;
-      if (mean > bestMean) { bestMean = mean; bestSet = set; }
-    }
-    return bestSet.map(r => parseFloat(r.time.toFixed(3)));
+  // Try every count in [lo, hi] and pick the set with the best mean score
+  let bestSet = [], bestMean = -1;
+  for (let cnt = lo; cnt <= hi; cnt++) {
+    const set = greedyPick(cnt);
+    if (!set.length) continue;
+    const mean = set.reduce((s, r) => s + r.score, 0) / set.length;
+    if (mean > bestMean) { bestMean = mean; bestSet = set; }
   }
+  return bestSet.map(r => parseFloat(r.time.toFixed(3)));
 }
 
 // ── Dark Mode ──────────────────────────────────────────────────────────────
@@ -2037,10 +2073,14 @@ function fullReset() {
   rcPlaying          = false;
   trackPlayIndex     = -1;
 
-  // Clear BPM state
+  // Clear BPM state and advanced analysis cache
   lastBpmMap = null;
+  advancedSignalCache = null;
   const bpmStrip = document.getElementById('bpmStrip');
   if (bpmStrip) bpmStrip.style.display = 'none';
+  // Reset Essentia BPM button state
+  const essBtn = document.getElementById('essentiaBpmApplyBtn');
+  if (essBtn) { essBtn.textContent = '♩ Detect & Apply BPM'; essBtn.disabled = false; essBtn.style.borderColor = ''; essBtn.style.color = ''; }
 
   // Reset Start Track # input
   const stnInput = document.getElementById('startTrackNum');
@@ -2074,6 +2114,7 @@ function fullReset() {
   document.getElementById('metaFields').style.display   = 'none';
   document.getElementById('artistInput').value          = '';
   document.getElementById('albumInput').value           = '';
+  const _maa = document.getElementById('metaAlbumArtist'); if (_maa) _maa.value = '';
   document.getElementById('metaArtist').value           = '';
   document.getElementById('metaAlbum').value            = '';
   document.getElementById('metaYear').value             = '';
@@ -2113,6 +2154,7 @@ function fullReset() {
 
 // ── File Load ──────────────────────────────────────────────────────────────
 let waveformEventsInitialised = false; // guard against duplicate listeners
+let lastUserZoomMs = 0; // suppresses playhead auto-scroll for 2s after a zoom gesture
 const fileInput = document.getElementById('fileInput');
 const dropZone  = document.getElementById('dropZone');
 
@@ -2796,9 +2838,12 @@ function initWaveformEvents() {
   waveformEventsInitialised = true;
   const canvas = document.getElementById('waveformCanvas');
 
-  // Scroll to zoom, centred on mouse position
+  // Scroll to zoom, centred on cursor — always zooms to the mouse position,
+  // even while the file is playing.  After a zoom gesture, playhead auto-scroll
+  // is suppressed for 2 s so the user can inspect the region they zoomed into.
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
+    lastUserZoomMs = Date.now();
     const rect  = canvas.getBoundingClientRect();
     const mouseF = viewStart + ((e.clientX - rect.left) / rect.width) * (viewEnd - viewStart);
     const factor = e.deltaY < 0 ? 1.35 : (1 / 1.35);
@@ -3061,6 +3106,286 @@ function updateNavButtons() {
   if (btn) btn.disabled = undoStack.length === 0;
 }
 
+// ── Spectrogram ────────────────────────────────────────────────────────────
+let sgData    = null;   // Float32Array[nFrames × nBins] — gamma-corrected log-magnitude
+let sgNFrames = 0;
+let sgNBins   = 0;
+let sgHopSec  = 0.05;
+let sgFftSize = 2048;
+let sgBusy    = false;
+let sgVisible = false;
+
+function toggleSpectrogram() {
+  sgVisible = !sgVisible;
+  const wrap = document.getElementById('spectrogramWrap');
+  const btn  = document.getElementById('btnSpectrogram');
+  wrap.style.display    = sgVisible ? 'block' : 'none';
+  btn.style.borderColor = sgVisible ? 'var(--amber)' : '';
+  btn.style.color       = sgVisible ? 'var(--amber)' : '';
+  if (sgVisible && audioBuffer && !sgData && !sgBusy) {
+    buildSpectrogram();
+  } else if (sgVisible && sgData) {
+    drawSpectrogram();
+    _initSpectrogramEvents();
+  }
+}
+
+async function buildSpectrogram() {
+  if (!audioBuffer || sgBusy) return;
+  sgBusy = true;
+  const loading = document.getElementById('spectrogramLoading');
+  loading.classList.add('active');
+
+  const sr      = audioBuffer.sampleRate;
+  const data0   = audioBuffer.getChannelData(0);
+  const data1   = audioBuffer.numberOfChannels > 1 ? audioBuffer.getChannelData(1) : data0;
+  const fftSize = 2048;
+  const hopSec  = 0.05;
+  const hopSize = Math.floor(hopSec * sr);
+  const nBins   = fftSize >> 1;
+  const nF      = Math.floor(data0.length / hopSize);
+
+  sgFftSize = fftSize;
+  sgNBins   = nBins;
+  sgNFrames = nF;
+  sgHopSec  = hopSec;
+
+  const out = new Float32Array(nF * nBins);
+  const win = new Float32Array(fftSize);
+  for (let i = 0; i < fftSize; i++) win[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / (fftSize - 1));
+
+  // Dynamic range: -90 dB floor, 0 dB ceiling.
+  // Gamma = 1.6 applied AFTER normalisation to compress bright content and
+  // prevent "overexposure" — typical loud music (~-6 dB) maps to ~0.80,
+  // clearly yellow-orange rather than white. True peaks (0 dBFS) reach 1.0.
+  const FLOOR_DB  = -90;
+  const RANGE_DB  = 90;          // 0 dB ceiling
+  const GAMMA     = 1.6;
+
+  for (let f = 0; f < nF; f++) {
+    const frame = new Float32Array(fftSize);
+    const s0 = f * hopSize;
+    for (let i = 0; i < fftSize; i++) {
+      const si = s0 + i;
+      frame[i] = (si < data0.length ? (data0[si] + data1[si]) * 0.5 : 0) * win[i];
+    }
+    const mag = realFFTMagnitude(frame, fftSize);
+    for (let b = 0; b < nBins; b++) {
+      const db    = 20 * Math.log10(Math.max(mag[b], 1e-10));
+      const vLin  = Math.max(0, Math.min(1, (db - FLOOR_DB) / RANGE_DB));
+      out[f * nBins + b] = Math.pow(vLin, GAMMA);
+    }
+    if (f % 5000 === 0) {
+      loading.textContent = `Building spectrogram… ${Math.round(f / nF * 100)}%`;
+      await new Promise(r => setTimeout(r, 0));
+    }
+  }
+
+  sgData = out;
+  sgBusy = false;
+  loading.classList.remove('active');
+  drawSpectrogram();
+  _initSpectrogramEvents();
+}
+
+function drawSpectrogram() {
+  const canvas = document.getElementById('spectrogramCanvas');
+  if (!canvas || !sgData || !audioBuffer) return;
+
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  const W   = canvas.offsetWidth || canvas.parentElement.offsetWidth;
+  const H   = 150;
+  canvas.width        = W * dpr;
+  canvas.height       = H * dpr;
+  canvas.style.height = H + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  const imgData = ctx.createImageData(W, H);
+  const px      = imgData.data;
+
+  const sr       = audioBuffer.sampleRate;
+  const maxFreq  = Math.min(16000, sr / 2);
+  const maxBin   = Math.min(sgNBins, Math.floor(maxFreq / (sr / sgFftSize)));
+  const logMin   = Math.log2(80);
+  const logMax   = Math.log2(maxFreq);
+  const nF       = sgNFrames;
+  const startF   = viewStart * nF;
+  const endF     = viewEnd   * nF;
+
+  for (let x = 0; x < W; x++) {
+    const fi = Math.floor(startF + (x / W) * (endF - startF));
+    if (fi < 0 || fi >= nF) continue;
+    const base = fi * sgNBins;
+
+    for (let y = 0; y < H; y++) {
+      const logFreq = logMin + ((H - 1 - y) / (H - 1)) * (logMax - logMin);
+      const freq    = Math.pow(2, logFreq);
+      const bin     = Math.min(maxBin - 1, Math.floor(freq / (sr / sgFftSize)));
+      const v       = sgData[base + bin] || 0;
+
+      // Colourmap: black → deep purple → blue → cyan → teal → yellow-green → orange
+      // White is reserved for true 0 dBFS peaks only (v ≈ 1.0).
+      let r, g, b;
+      if (v < 0.18) {
+        // Black → deep purple
+        const t = v / 0.18;
+        r = Math.round(t * 55);  g = 0;               b = Math.round(t * 80);
+      } else if (v < 0.38) {
+        // Deep purple → blue
+        const t = (v - 0.18) / 0.20;
+        r = Math.round(55 - t * 55);  g = Math.round(t * 30);  b = Math.round(80 + t * 155);
+      } else if (v < 0.55) {
+        // Blue → cyan
+        const t = (v - 0.38) / 0.17;
+        r = 0;  g = Math.round(30 + t * 185);  b = Math.round(235 - t * 45);
+      } else if (v < 0.70) {
+        // Cyan → teal-green
+        const t = (v - 0.55) / 0.15;
+        r = Math.round(t * 30);  g = Math.round(215 + t * 20);  b = Math.round(190 - t * 130);
+      } else if (v < 0.83) {
+        // Teal-green → yellow
+        const t = (v - 0.70) / 0.13;
+        r = Math.round(30 + t * 215);  g = Math.round(235 - t * 5);  b = Math.round(60 - t * 60);
+      } else if (v < 0.93) {
+        // Yellow → orange
+        const t = (v - 0.83) / 0.10;
+        r = 245;  g = Math.round(230 - t * 140);  b = 0;
+      } else {
+        // Orange → near-white (only true 0 dBFS clips hit here)
+        const t = (v - 0.93) / 0.07;
+        r = 255;  g = Math.round(90 + t * 165);  b = Math.round(t * 200);
+      }
+      const idx = (y * W + x) * 4;
+      px[idx] = r;  px[idx+1] = g;  px[idx+2] = b;  px[idx+3] = 255;
+    }
+  }
+  ctx.putImageData(imgData, 0, 0);
+
+  // Split lines
+  if (splitPoints.length && audioBuffer) {
+    const dur = audioBuffer.duration;
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+    ctx.lineWidth   = 1;
+    ctx.setLineDash([3, 4]);
+    for (const t of splitPoints) {
+      const frac = t / dur;
+      if (frac < viewStart || frac > viewEnd) continue;
+      const x = ((frac - viewStart) / (viewEnd - viewStart)) * W;
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+    }
+    ctx.setLineDash([]);
+  }
+
+  // Frequency axis
+  const axCv = document.getElementById('spectrogramFreqAxis');
+  if (axCv) {
+    axCv.width        = 38 * dpr;
+    axCv.height       = H  * dpr;
+    axCv.style.width  = '38px';
+    axCv.style.height = H + 'px';
+    const ax = axCv.getContext('2d');
+    ax.scale(dpr, dpr);
+    ax.clearRect(0, 0, 38, H);
+    ax.font      = '7px DM Mono, monospace';
+    ax.fillStyle = 'rgba(180,220,255,0.6)';
+    const freqLabels = [100, 250, 500, 1000, 2000, 4000, 8000, 16000].filter(f => f <= maxFreq && f >= 80);
+    for (const freq of freqLabels) {
+      const logF = Math.log2(freq);
+      const y    = H - 1 - Math.round(((logF - logMin) / (logMax - logMin)) * (H - 1));
+      if (y < 6 || y > H - 4) continue;
+      const label = freq >= 1000 ? (freq / 1000) + 'k' : freq + '';
+      ax.fillText(label, 1, y + 3);
+      ax.strokeStyle = 'rgba(180,220,255,0.1)';
+      ax.lineWidth   = 0.5;
+      ax.beginPath(); ax.moveTo(28, y); ax.lineTo(38, y); ax.stroke();
+    }
+  }
+}
+
+// Forward mouse interactions from the spectrogram canvas to the same handlers as the waveform.
+// Zoom (wheel), play (right-click), add split (left-click), cursor time (mousemove).
+let _sgEventsInitialised = false;
+function _initSpectrogramEvents() {
+  if (_sgEventsInitialised) return;
+  _sgEventsInitialised = true;
+  const sgCv = document.getElementById('spectrogramCanvas');
+  if (!sgCv) return;
+
+  // Scroll-to-zoom — same logic as waveform canvas
+  sgCv.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    if (!audioBuffer) return;
+    const rect   = sgCv.getBoundingClientRect();
+    const mouseF = viewStart + ((e.clientX - rect.left) / rect.width) * (viewEnd - viewStart);
+    const factor = e.deltaY < 0 ? 1.35 : (1 / 1.35);
+    zoomAround(mouseF, factor);
+  }, { passive: false });
+
+  // Mousemove — show cursor time in toolbar
+  sgCv.addEventListener('mousemove', (e) => {
+    if (!audioBuffer) return;
+    const rect = sgCv.getBoundingClientRect();
+    const f    = viewStart + ((e.clientX - rect.left) / rect.width) * (viewEnd - viewStart);
+    const t    = Math.max(0, Math.min(audioBuffer.duration, f * audioBuffer.duration));
+    document.getElementById('waveformCursor').textContent = fmtTime(t);
+  });
+
+  // Right-click — play from that position (same as waveform)
+  sgCv.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    if (!audioBuffer || !audioCtx) return;
+    if (rcPlaying) { rcStop(true); return; }
+    const rect = sgCv.getBoundingClientRect();
+    const f    = viewStart + ((e.clientX - rect.left) / rect.width) * (viewEnd - viewStart);
+    const t    = Math.max(0, Math.min(audioBuffer.duration, f * audioBuffer.duration));
+    rcStartAt(t);
+  });
+
+  // Left-click — add split at that time (same as waveform, but no drag logic here)
+  sgCv.addEventListener('click', (e) => {
+    if (!audioBuffer) return;
+    const rect = sgCv.getBoundingClientRect();
+    const f    = viewStart + ((e.clientX - rect.left) / rect.width) * (viewEnd - viewStart);
+    const t    = f * audioBuffer.duration;
+    if (t <= 5 || t >= audioBuffer.duration - 0.1) return;
+    // Don't add if very close to an existing split (within 8px)
+    const pixelPerSec = rect.width / ((viewEnd - viewStart) * audioBuffer.duration);
+    if (splitPoints.some(sp => Math.abs(sp - t) * pixelPerSec < 8)) return;
+    pushUndo();
+    splitPoints.push(t);
+    splitPoints.sort((a, b) => a - b);
+    splitConfidence[t.toFixed(4)] = 1;
+    rebuildSegments();
+    renderTrackList();
+    drawWaveform();   // also redraws spectrogram via hook
+    drawOverview();
+  });
+}
+
+// Hook spectrogram into the waveform redraw cycle
+const _origDrawWaveformSg = drawWaveform;
+drawWaveform = function (...args) {
+  _origDrawWaveformSg.apply(this, args);
+  if (sgVisible && sgData) drawSpectrogram();
+};
+
+// Clear on new file load (appended to fullReset via a post-load hook)
+const _origFullResetSg = fullReset;
+fullReset = function (...args) {
+  _origFullResetSg.apply(this, args);
+  sgData    = null;
+  sgNFrames = 0;
+  sgNBins   = 0;
+  sgBusy    = false;
+  const loading = document.getElementById('spectrogramLoading');
+  if (loading) loading.classList.remove('active');
+};
+
+window.addEventListener('resize', () => {
+  if (sgVisible && sgData) setTimeout(drawSpectrogram, 80);
+});
+
 // ── Silence Detection ──────────────────────────────────────────────────────
 // ── Algorithm selector ─────────────────────────────────────────────────────
 let currentAlgo = 'simple';
@@ -3076,9 +3401,9 @@ function setAlgo(algo) {
 
 // Simple-mode thresholds + advanced avg-gap per recording type
 var simplePresets = {
-  studio: { threshold: -42, minSilence: 1.0, avgGap: 1.0 },
-  vinyl:  { threshold: -33, minSilence: 1.2, avgGap: 1.2 },
-  live:   { threshold: -27, minSilence: 0.8, avgGap: 0.8 },
+  studio: { threshold: -45, minSilence: 0.8, avgGap: 0.8 },
+  vinyl:  { threshold: -32, minSilence: 1.0, avgGap: 1.0 },
+  live:   { threshold: -20, minSilence: 1.5, avgGap: 1.5 },
 };
 
 function setRecordingType(name) {
@@ -3102,16 +3427,245 @@ function setRecordingType(name) {
 // Global BPM result from last analysis
 let lastBpmMap = null; // Float32Array of per-window BPM estimates, same resolution as rms
 
+// ── Essentia.js BPM integration ────────────────────────────────────────────
+// Essentia.js is loaded lazily on first use from the jsDelivr CDN.
+// It exposes RhythmExtractor2013, the same algorithm used in professional
+// music analysis research (used by AcousticBrainz, etc.).
+//
+// Results are stored per-segment as seg.essentiaBpm and displayed in the
+// BPM strip alongside the pure-JS ODF result for direct comparison.
+//
+// CDN: https://cdn.jsdelivr.net/npm/essentia.js@0.1.3/dist/
+//   - essentia-wasm.web.js   (WASM glue, ~180 KB)
+//   - essentia.js-core.js    (JS wrapper, ~40 KB)
+// Total cold load: ~220 KB + 3–4 MB WASM binary (cached after first use).
+
+let _essentiaInstance  = null;   // Essentia API object once loaded
+let _essentiaLoading   = false;
+let _essentiaLoadError = null;
+
+// Lazy-load Essentia.js from CDN. Returns the Essentia instance or throws.
+async function _loadEssentia() {
+  if (_essentiaInstance) return _essentiaInstance;
+  if (_essentiaLoadError) throw new Error(_essentiaLoadError);
+  if (_essentiaLoading)   {
+    // Wait for concurrent load to finish
+    while (_essentiaLoading) await new Promise(r => setTimeout(r, 100));
+    if (_essentiaLoadError) throw new Error(_essentiaLoadError);
+    return _essentiaInstance;
+  }
+  _essentiaLoading = true;
+  try {
+    // Step 1: load essentia-wasm.web.js — this registers EssentiaWASM on globalThis
+    // as an Emscripten module factory function.
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/essentia.js@0.1.3/dist/essentia-wasm.web.js';
+      s.onload  = resolve;
+      s.onerror = () => reject(new Error('Failed to load essentia-wasm.web.js from CDN'));
+      document.head.appendChild(s);
+    });
+
+    // Step 2: load essentia.js-core.js — registers Essentia class on globalThis
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/essentia.js@0.1.3/dist/essentia.js-core.js';
+      s.onload  = resolve;
+      s.onerror = () => reject(new Error('Failed to load essentia.js-core.js from CDN'));
+      document.head.appendChild(s);
+    });
+
+    // Step 3: instantiate the WASM module, then create the Essentia API wrapper.
+    // EssentiaWASM is an Emscripten factory — calling it returns a Promise that
+    // resolves to the compiled WASM module object.
+    const EssentiaWASM = globalThis.EssentiaWASM;
+    if (!EssentiaWASM) throw new Error('EssentiaWASM not found on globalThis after script load');
+    const wasmModule = await EssentiaWASM();
+    const EssentiaClass = globalThis.Essentia;
+    if (!EssentiaClass) throw new Error('Essentia class not found on globalThis after script load');
+    _essentiaInstance = new EssentiaClass(wasmModule);
+    console.log('[Essentia] loaded, version:', _essentiaInstance.version);
+    return _essentiaInstance;
+  } catch (e) {
+    _essentiaLoadError = e.message;
+    throw e;
+  } finally {
+    _essentiaLoading = false;
+  }
+}
+
+// Run Essentia's RhythmExtractor2013 on a Float32Array slice of mono 44100 Hz audio.
+// Returns { bpm, confidence } or null on failure.
+function _essentiaRunRhythm(essentia, monoSamples, sr) {
+  let vec = null;
+  try {
+    vec = essentia.arrayToVector(monoSamples);
+    // JS binding arg order: (signal, maxTempo, method, minTempo)
+    // All params except signal are optional with these defaults:
+    //   maxTempo=208, method='multifeature', minTempo=40
+    const res = essentia.RhythmExtractor2013(vec, 208, 'multifeature', 40);
+    const bpm        = res.bpm;
+    const confidence = res.confidence;  // 0..1, only valid for 'multifeature'
+    if (bpm < 30 || bpm > 240) return null;
+    // confidence may be undefined with some builds — treat undefined as passing
+    if (confidence !== undefined && confidence < 0.01) return null;
+    return { bpm: Math.round(bpm * 10) / 10, confidence: confidence ?? 1 };
+  } catch (e) {
+    console.warn('[Essentia RhythmExtractor]', e.message || e);
+    return null;
+  } finally {
+    // Vectors must be freed via their own .delete() method to avoid WASM heap leaks
+    if (vec) { try { vec.delete(); } catch(_) {} }
+  }
+}
+
+// Entry point for "♩ Detect & Apply BPM" in card 4.
+// Loads Essentia.js, runs RhythmExtractor2013 on each real track segment,
+// writes the result to seg.trackBpm, and re-renders the Review panel.
+async function applyEssentiaBpmToTracks() {
+  if (!audioBuffer || !trackSegments.length) return;
+  const btn    = document.getElementById('essentiaBpmApplyBtn');
+  const status = document.getElementById('essentiaBpmStatus');
+  if (!btn) return;
+
+  btn.disabled    = true;
+  btn.textContent = '⏳ Loading Essentia…';
+  if (status) { status.className = 'status info'; status.textContent = 'Loading Essentia.js from CDN…'; }
+
+  let essentia;
+  try {
+    essentia = await _loadEssentia();
+  } catch (e) {
+    btn.textContent = '✗ Load failed';
+    btn.disabled    = false;
+    btn.style.borderColor = 'var(--red)';
+    btn.style.color       = 'var(--red)';
+    if (status) { status.className = 'status error'; status.textContent = `✗ ${e.message}`; }
+    return;
+  }
+
+  const sr       = audioBuffer.sampleRate;
+  const realSegs = trackSegments.filter(s => !s.isNearMiss);
+  let done = 0, applied = 0;
+
+  for (let i = 0; i < realSegs.length; i++) {
+    const seg = realSegs[i];
+    btn.textContent = `⏳ ${i + 1} / ${realSegs.length}`;
+    if (status) status.textContent = `Analysing track ${i + 1} of ${realSegs.length}…`;
+
+    // Build mono Float32Array for this segment, resampled to 44100 Hz
+    const TARGET_SR    = 44100;
+    const resampleRatio = sr / TARGET_SR;
+    const startSamp    = Math.floor(seg.start * sr);
+    const endSamp      = Math.min(Math.floor(seg.end * sr), audioBuffer.length);
+    const srcLen       = endSamp - startSamp;
+    const outLen       = Math.floor(srcLen / resampleRatio);
+
+    const nCh  = audioBuffer.numberOfChannels;
+    const mono = new Float32Array(outLen);
+    for (let j = 0; j < outLen; j++) {
+      const srcIdx = startSamp + Math.floor(j * resampleRatio);
+      let v = 0;
+      for (let ch = 0; ch < nCh; ch++) v += audioBuffer.getChannelData(ch)[srcIdx];
+      mono[j] = v / nCh;
+    }
+
+    // RhythmExtractor2013 needs at least ~4 s to be reliable
+    if (outLen / TARGET_SR >= 4) {
+      const result = _essentiaRunRhythm(essentia, mono, TARGET_SR);
+      if (result && result.bpm) {
+        seg.trackBpm = result.bpm;
+        applied++;
+      }
+    }
+    done++;
+    await new Promise(r => setTimeout(r, 0));
+  }
+
+  renderTrackList();
+
+  btn.textContent       = `✓ BPM applied (${applied}/${done})`;
+  btn.disabled          = false;
+  btn.style.borderColor = 'var(--green)';
+  btn.style.color       = 'var(--green)';
+  if (status) {
+    status.className   = 'status success';
+    status.textContent = `✓ BPM detected and applied to ${applied} of ${done} tracks. Edit individual values in the Review panel.`;
+  }
+}
+
 async function detectTracks() {
   if (!audioBuffer) return;
   const btn = document.getElementById('detectBtn');
   btn.disabled = true;
-  setStatus('detectStatus', 'info', '🔍 Analysing audio for silence…');
-  setProgress('detectProgress', 0);
 
-  const threshold = parseFloat(document.getElementById('silenceThreshold').value);
-  const minSilSec = parseFloat(document.getElementById('minSilence').value);
+  const n = getEstimatedTracks();
+
+  if (n === null) {
+    // No estimate — single pass with current settings
+    setStatus('detectStatus', 'info', '🔍 Analysing audio for silence…');
+    await _detectTracksOnce(
+      parseFloat(document.getElementById('silenceThreshold').value),
+      parseFloat(document.getElementById('minSilence').value),
+      parseFloat(document.getElementById('minTrack').value)
+    );
+    const count = trackSegments.filter(s => !s.isNearMiss).length;
+    const nmCount = nearMissPoints.length;
+    setStatus('detectStatus', count > 1 ? 'success' : 'info',
+      count > 1
+        ? `✓ Found ${count} tracks${nmCount ? ` · ${nmCount} near-miss candidate${nmCount>1?'s':''} flagged for review` : ''}. Edit titles or click waveform to add splits.`
+        : `⚠ Only ${count} track detected. Try lowering the threshold or adding splits manually.`
+    );
+    btn.disabled = false;
+    return;
+  }
+
+  // Iterative mode: adjust threshold until track count falls within estimate range
+  const [lo, hi] = estimateRange(n);
   const minTrkSec = parseFloat(document.getElementById('minTrack').value);
+  const baseThresh = parseFloat(document.getElementById('silenceThreshold').value);
+  const baseMinSil = parseFloat(document.getElementById('minSilence').value);
+
+  // Search schedule: try threshold steps from -20 to +20 dB relative to base,
+  // and also vary min-silence slightly. Interleave: first try loosening threshold
+  // (more splits), then tightening (fewer), alternating outward from base.
+  // Build a list of (threshold, minSilence) pairs to try in order.
+  const attempts = [{ t: baseThresh, s: baseMinSil }];
+  for (let step = 1; step <= 20; step++) {
+    attempts.push({ t: baseThresh + step, s: baseMinSil });       // tighter → fewer splits
+    attempts.push({ t: baseThresh - step, s: baseMinSil });       // looser  → more splits
+    if (step <= 4) {
+      attempts.push({ t: baseThresh + step, s: Math.max(0.3, baseMinSil - 0.2 * step) });
+      attempts.push({ t: baseThresh - step, s: Math.min(5.0, baseMinSil + 0.2 * step) });
+    }
+  }
+
+  let lastCount = null;
+  for (let ai = 0; ai < attempts.length; ai++) {
+    const { t, s } = attempts[ai];
+    if (t > -10 || t < -80) continue;
+    setStatus('detectStatus', 'info', `🔍 Trying threshold ${t} dB, min silence ${s.toFixed(1)} s… (targeting ${n} tracks)`);
+    await _detectTracksOnce(t, s, minTrkSec);
+    const count = trackSegments.filter(seg => !seg.isNearMiss).length;
+    lastCount = count;
+    if (count >= lo && count <= hi) {
+      // Found a good result — update the inputs to show what was used
+      document.getElementById('silenceThreshold').value = t;
+      document.getElementById('minSilence').value = s.toFixed(1);
+      setStatus('detectStatus', 'success',
+        `✓ Found ${count} tracks (target ${n} ± ${n - lo}) using ${t} dB / ${s.toFixed(1)} s min silence.`);
+      btn.disabled = false;
+      return;
+    }
+  }
+
+  // No exact match — report best attempt (which was the last _detectTracksOnce call)
+  setStatus('detectStatus', 'info',
+    `⚠ Could not reach target of ${n} tracks — found ${lastCount}. Adjust threshold manually or clear Est. Tracks.`);
+  btn.disabled = false;
+}
+
+async function _detectTracksOnce(threshold, minSilSec, minTrkSec) {
 
   await new Promise(r => setTimeout(r, 30));
   const data = audioBuffer.getChannelData(0);
@@ -3252,20 +3806,12 @@ async function detectTracks() {
   drawWaveform();
   drawOverview();
   renderTrackList();
-
-  const count = trackSegments.filter(s => !s.isNearMiss).length;
-  const nmCount = nearMissPoints.length;
-  setStatus('detectStatus', count > 1 ? 'success' : 'info',
-    count > 1
-      ? `✓ Found ${count} tracks${nmCount ? ` · ${nmCount} near-miss candidate${nmCount>1?'s':''} flagged for review` : ''}. Edit titles or click waveform to add splits.`
-      : `⚠ Only ${count} track detected. Try lowering the threshold or adding splits manually.`
-  );
-  btn.disabled = false;
 }
+
 
 // ── Advanced Multi-Signal Track Detection ─────────────────────────────────
 //
-// Nine signals are fused into a boundary-probability curve:
+// Ten signals are fused into a boundary-probability curve:
 //   1. Energy envelope      — low RMS = possible gap
 //   2. Spectral flux        — sudden change in spectrum = onset / offset
 //   3. High-freq content    — drop in high freqs marks track endings
@@ -3275,14 +3821,103 @@ async function detectTracks() {
 //   7. Spectral centroid    — brightness shift between songs
 //   8. Chroma / key shift   — tonal centre change between songs
 //   9. Dynamic range        — crest-factor envelope detects fade-outs
+//  10. Crowd energy         — sustained mid-band noise before boundary (live shows)
 //
 // The BPM signals also guard against false positives: if a section
 // has consistent beats the energy dip is probably a drum solo, not a gap.
 //
+// ── Advanced detection signal cache ───────────────────────────────────────
+// Passes 1–4b (RMS, ODF, BPM, spectral features, per-candidate scores) are
+// expensive and completely independent of the signal weights.  We cache them
+// keyed on the file identity + structural params (avgSilSec, minTrkSec).
+// When the user adjusts weights or score threshold, only PASS 5 (fusion +
+// selection) reruns — taking <1 ms instead of several seconds.
+let advancedSignalCache = null;
+
+function _advFileKey() {
+  return audioBuffer
+    ? `${audioBuffer.duration.toFixed(3)}|${audioBuffer.sampleRate}|${audioBuffer.length}`
+    : '';
+}
+
+function _advCacheValid(avgSilSec, minTrkSec) {
+  return advancedSignalCache !== null &&
+         advancedSignalCache.fileKey === _advFileKey() &&
+         Math.abs(advancedSignalCache.avgSilSec - avgSilSec) < 0.01 &&
+         Math.abs(advancedSignalCache.minTrkSec - minTrkSec) < 0.5;
+}
+
+// Called by weight buttons and score-threshold selector for instant updates.
+function reapplyAdvancedWeights() {
+  if (!advancedSignalCache || !audioBuffer) return;
+  const thresh = parseFloat(document.getElementById('advSensitivity').value) || 0.28;
+  _advSelectFromCache(thresh);
+  drawWaveform(); drawOverview(); renderTrackList();
+  const count = trackSegments.filter(s => !s.isNearMiss).length;
+  setStatus('detectStatus', 'success',
+    `✓ ${count} track${count !== 1 ? 's' : ''} — weights updated instantly from cache.`);
+}
+
 async function detectTracksAdvanced() {
   if (!audioBuffer) return;
   const btn = document.getElementById('detectBtnAdv');
   btn.disabled = true;
+
+  const n = getEstimatedTracks();
+  const baseScore = parseFloat(document.getElementById('advSensitivity').value) || 0.28;
+
+  if (n === null) {
+    await _detectTracksAdvancedOnce(baseScore);
+    const count = trackSegments.filter(s => !s.isNearMiss).length;
+    const nmCount = nearMissPoints.length;
+    setStatus('detectStatus', count > 1 ? 'success' : 'info',
+      count > 1
+        ? `✓ Found ${count} tracks${nmCount ? ` · ${nmCount} near-miss${nmCount>1?'es':''} flagged` : ''}.`
+        : `⚠ No boundaries found. Try Permissive score threshold.`
+    );
+    btn.disabled = false;
+    return;
+  }
+
+  // Iterative mode: sweep score threshold to hit the estimate range
+  const [lo, hi] = estimateRange(n);
+  // Try a range of score thresholds from very permissive to very conservative
+  const thresholds = [0.08, 0.12, 0.18, 0.22, 0.28, 0.34, 0.42, 0.52, 0.65, 0.80];
+  // Start from the one closest to baseScore and search outward both ways
+  thresholds.sort((a, b) => Math.abs(a - baseScore) - Math.abs(b - baseScore));
+
+  let lastCount = null;
+  for (const thresh of thresholds) {
+    setStatus('detectStatus', 'info', `🧠 Trying score threshold ${thresh} … (targeting ${n} tracks)`);
+    await _detectTracksAdvancedOnce(thresh);
+    const count = trackSegments.filter(s => !s.isNearMiss).length;
+    lastCount = count;
+    if (count >= lo && count <= hi) {
+      setStatus('detectStatus', 'success',
+        `✓ Found ${count} tracks (target ${n} ± ${n - lo}) using score threshold ${thresh}.`);
+      btn.disabled = false;
+      return;
+    }
+  }
+
+  setStatus('detectStatus', 'info',
+    `⚠ Could not reach target of ${n} tracks — found ${lastCount}. Adjust settings manually or clear Est. Tracks.`);
+  btn.disabled = false;
+}
+
+async function _detectTracksAdvancedOnce(scoreThresholdVal) {
+  if (!audioBuffer) return;
+
+  const avgSilSec  = parseFloat(document.getElementById('advMinSilence').value) || 1.0;
+  const minTrkSec  = parseFloat(document.getElementById('advMinTrack').value) || 20;
+
+  // If the cache is still valid for this file and settings, skip straight to
+  // pass 5 — no audio reprocessing needed.
+  if (_advCacheValid(avgSilSec, minTrkSec)) {
+    _advSelectFromCache(scoreThresholdVal);
+    return;
+  }
+
   setStatus('detectStatus', 'info', '🧠 Analysing audio…');
   setProgress('detectProgress', 0);
   await new Promise(r => setTimeout(r, 30));
@@ -3293,38 +3928,25 @@ async function detectTracksAdvanced() {
   const durSec = audioBuffer.duration;
 
   // ── Params ────────────────────────────────────────────────────────────────
-  const minTrkSec   = parseFloat(document.getElementById('advMinTrack').value) || 20;
-  const scoreThresholdVal = parseFloat(document.getElementById('advSensitivity').value) || 0.28;
-  const wEnergy     = parseFloat(document.getElementById('wEnergy').value);
-  const wFlux       = parseFloat(document.getElementById('wFlux').value);
-  const wBpm        = parseFloat(document.getElementById('wBpm').value);
-  const wHfc        = parseFloat(document.getElementById('wHfc').value);
-  const wBpmHp      = parseFloat(document.getElementById('wBpmHp').value);
-  const wOnset      = parseFloat(document.getElementById('wOnset').value);
-  const wCentroid   = parseFloat(document.getElementById('wCentroid').value);
-  const wChroma     = parseFloat(document.getElementById('wChroma').value);
-  const wDynamic    = parseFloat(document.getElementById('wDynamic').value);
+  const minSilSec    = avgSilSec;
+  const wEnergy      = parseFloat(document.getElementById('wEnergy').value);
+  const wFlux        = parseFloat(document.getElementById('wFlux').value);
+  const wBpm         = parseFloat(document.getElementById('wBpm').value);
+  const wHfc         = parseFloat(document.getElementById('wHfc').value);
+  const wBpmHp       = parseFloat(document.getElementById('wBpmHp').value);
+  const wOnset       = parseFloat(document.getElementById('wOnset').value);
+  const wCentroid    = parseFloat(document.getElementById('wCentroid').value);
+  const wChroma      = parseFloat(document.getElementById('wChroma').value);
+  const wDynamic     = parseFloat(document.getElementById('wDynamic').value);
+  const wCrowd       = parseFloat(document.getElementById('wCrowd').value) || 0;
 
-  // Sensitivity maps directly to the fused score threshold — nothing else.
-  //   Permissive   (0.18) — accept weaker evidence
-  //   Balanced     (0.28) — default
-  //   Conservative (0.42) — require strong multi-signal agreement
-  // Energy threshold is fixed — set by recording type, not by sensitivity.
-  // The recording type preset writes silenceThreshold which the simple detector
-  // reads; for advanced we derive the same value independently from a fixed
-  // per-type constant.  We use -38 dB as a sensible mid-range default.
-  const thresholdDb  = -38;
-  const threshLin    = Math.pow(10, thresholdDb / 20);
-
-  // Avg. gap length: used ONLY as a signal weight inside the energy score,
+  // Avg. gap length: used as a signal weight inside the energy score (silLen),
   // not as a hard gate.  Any quiet run ≥ 0.3 s becomes a candidate.
-  const avgSilSec    = parseFloat(document.getElementById('advMinSilence').value) || 1.0;
-  const minSilSec    = avgSilSec;  // kept as alias for silLen scoring below
-  const hopSec       = 0.05;   // 50 ms frames
+  const hopSec       = 0.05;
   const hopSize      = Math.floor(hopSec * sr);
   const fftSize      = 2048;
   const numFrames    = Math.floor(data0.length / hopSize);
-  const minSilFrames = Math.ceil(0.3 / hopSec);   // hard gate: just 0.3 s — any detectable gap qualifies
+  const minSilFrames = Math.ceil(0.3 / hopSec);
   const minTrkFrames = Math.ceil(minTrkSec / hopSec);
 
   // ── PASS 1: RMS Energy (50 ms frames) ─────────────────────────────────────
@@ -3342,12 +3964,28 @@ async function detectTracksAdvanced() {
   }
   const rmsSmooth = smoothArray(rmsArr, 3);  // light smoothing only
 
-  // ── PASS 2: Find contiguous silence regions ────────────────────────────────
-  // A frame is "quiet" only if its RMS is below the hard energy threshold.
-  // We find contiguous quiet runs that meet the minimum duration.
-  // This is the SAME logic as Simple mode — it's the reliable foundation.
+  // ── PASS 2: Derive a relative "quiet" threshold from the file's own dynamics ──
+  // Instead of a fixed dB gate, we look at the recording's own dynamic range.
+  // The bottom 30 % of the RMS range (p10 → p90) is considered "quiet".
+  // This adapts automatically: a noisy vinyl recording still finds the quietest
+  // gaps between tracks even if they never reach -38 dB absolute silence.
   setStatus('detectStatus', 'info', '🧠 Finding silence regions…');
   await new Promise(r => setTimeout(r, 10));
+
+  {
+    // Sort a copy to find percentile values (don't mutate rmsSmooth)
+    const sorted = Float32Array.from(rmsSmooth).sort();
+    const p10    = sorted[Math.floor(numFrames * 0.10)];
+    const p90    = sorted[Math.floor(numFrames * 0.90)];
+    const dynRange = Math.max(p90 - p10, 1e-9);
+    // Threshold = bottom 30 % of dynamic range above the noise floor
+    const relThreshLin = p10 + dynRange * 0.30;
+
+    // Store on the outer scope for use in eScore below
+    var threshLin    = relThreshLin;
+    var energyP10    = p10;
+    var energyDyn    = dynRange;
+  }
 
   const isQuiet = new Uint8Array(numFrames);
   for (let f = 0; f < numFrames; f++) isQuiet[f] = rmsSmooth[f] < threshLin ? 1 : 0;
@@ -3361,7 +3999,6 @@ async function detectTracksAdvanced() {
     if (!q && runStart >= 0) {
       const runLen = f - runStart;
       if (runLen >= minSilFrames) {
-        // Use the point 80% through the silence as the split (same as Simple mode)
         const midFrame = runStart + Math.floor(runLen * 0.8);
         quietRuns.push({ start: runStart, end: f, midFrame, durationSec: runLen * hopSec });
       }
@@ -3371,9 +4008,18 @@ async function detectTracksAdvanced() {
 
   setProgress('detectProgress', 30);
 
-  // ── PASS 3: BPM estimation (10s windows, 5s hop) ──────────────────────────
-  setStatus('detectStatus', 'info', '🧠 Estimating tempo…');
+  // ── PASS 3: ODF + BPM estimation (10s windows, 5s hop) ───────────────────
+  // Build a full-band spectral-flux ODF first, then run the beat tracker on
+  // ODF slices.  This is far more reliable than autocorrelating raw RMS:
+  // the ODF fires sharply on drum hits and note onsets rather than riding
+  // the slow amplitude envelope.
+  setStatus('detectStatus', 'info', '🧠 Building onset detection function…');
   await new Promise(r => setTimeout(r, 10));
+
+  const ODF_FFT = 256;   // small FFT — fast per-frame, still captures transients
+  const fullODF = buildODF(data0, data1, hopSize, ODF_FFT, 0, numFrames);
+  // Light smoothing so isolated noise spikes don't dominate the autocorrelation
+  const fullODFSmooth = smoothArray(fullODF, 2);
 
   const bpmWinFr   = Math.ceil(10 / hopSec);
   const bpmHopFr   = Math.ceil(5  / hopSec);
@@ -3381,10 +4027,10 @@ async function detectTracksAdvanced() {
   const bpmPerFrame      = new Float32Array(numFrames);
   const strengthPerFrame = new Float32Array(numFrames);
   if (wBpm > 0 || wBpmHp > 0) {
-    setStatus('detectStatus', 'info', '🧠 Estimating tempo…');
+    setStatus('detectStatus', 'info', '🧠 Estimating tempo (ODF autocorrelation)…');
     await new Promise(r => setTimeout(r, 10));
     for (let wStart = 0; wStart + bpmWinFr < numFrames; wStart += bpmHopFr) {
-      const slice = rmsSmooth.subarray(wStart, wStart + bpmWinFr);
+      const slice = fullODFSmooth.subarray(wStart, wStart + bpmWinFr);
       const res   = estimateBPM(slice, hopSec);
       bpmEstimates.push({ frameCenter: wStart + Math.floor(bpmWinFr / 2), ...res });
       if (bpmEstimates.length % 6 === 0) await new Promise(r => setTimeout(r, 0));
@@ -3415,41 +4061,34 @@ async function detectTracksAdvanced() {
   setProgress('detectProgress', 38);
 
   // ── PASS 3b: High-pass BPM (snare/hi-hat band > ~1 kHz) ──────────────────
-  // A simple one-pole high-pass filter is applied to isolate the snare and
-  // hi-hat transients.  BPM autocorrelation on this band is often more stable
-  // than on the full-band RMS because kick-drum energy doesn't dominate.
-  // We pick whichever estimate (full-band vs high-pass) has stronger autocorr.
-  setStatus('detectStatus', 'info', '🧠 High-pass BPM (snare band)…');
+  // Build a separate ODF from the high-passed signal so that kick-drum energy
+  // (which dominates the full-band ODF) doesn't wash out the snare grid.
+  // Snare and hi-hat hits are more consistently timed and produce a cleaner
+  // autocorrelation peak — particularly important for vinyl recordings where
+  // the low end can be uneven.
+  setStatus('detectStatus', 'info', '🧠 Hi-pass ODF (snare/hi-hat band)…');
   await new Promise(r => setTimeout(r, 10));
 
-  // Build high-pass RMS array: one-pole HPF y[n] = x[n] - x[n-1] + α·y[n-1]
-  const hpAlpha   = Math.exp(-2 * Math.PI * 1000 / sr); // ~1 kHz cutoff
-  const rmsHpArr  = new Float32Array(numFrames);
+  // One-pole high-pass filter: y[n] = x[n] - x[n-1] + α·y[n-1], ~1 kHz cutoff
+  const hpAlpha = Math.exp(-2 * Math.PI * 1000 / sr);
+  const hpData  = new Float32Array(data0.length);
   {
     let prevIn = 0, prevOut = 0;
-    let sumSq  = 0;
-    let sampCount = 0;
     for (let i = 0; i < data0.length; i++) {
-      const x   = (data0[i] + data1[i]) * 0.5;
-      const y   = x - prevIn + hpAlpha * prevOut;
-      prevIn    = x;
-      prevOut   = y;
-      sumSq    += y * y;
-      sampCount++;
-      if (sampCount === hopSize) {
-        const f = Math.floor((i - hopSize + 1) / hopSize);
-        if (f >= 0 && f < numFrames) rmsHpArr[f] = Math.sqrt(sumSq / hopSize);
-        sumSq     = 0;
-        sampCount = 0;
-      }
+      const x = (data0[i] + data1[i]) * 0.5;
+      const y = x - prevIn + hpAlpha * prevOut;
+      prevIn  = x; prevOut = y;
+      hpData[i] = y;
     }
   }
-  const rmsHpSmooth = smoothArray(rmsHpArr, 3);
+  // Build ODF on the mono hi-passed signal (pass same array as both channels)
+  const hpODF       = buildODF(hpData, hpData, hopSize, ODF_FFT, 0, numFrames);
+  const hpODFSmooth = smoothArray(hpODF, 2);
 
   const bpmHpEstimates = [];
   for (let wStart = 0; wStart + bpmWinFr < numFrames; wStart += bpmHopFr) {
-    const sliceFull = rmsSmooth.subarray(wStart, wStart + bpmWinFr);
-    const sliceHp   = rmsHpSmooth.subarray(wStart, wStart + bpmWinFr);
+    const sliceFull = fullODFSmooth.subarray(wStart, wStart + bpmWinFr);
+    const sliceHp   = hpODFSmooth.subarray(wStart, wStart + bpmWinFr);
     const resFull   = estimateBPM(sliceFull, hopSec);
     const resHp     = estimateBPM(sliceHp,   hopSec);
     // Choose the estimate with higher autocorrelation strength
@@ -3579,6 +4218,45 @@ async function detectTracksAdvanced() {
 
   setProgress('detectProgress', 65);
 
+  // ── PASS 3f: Crowd energy — skipped when wCrowd is off ────────────────────
+  // Crowd noise signature: broadband mid-frequency energy (~200 Hz–4 kHz),
+  // low spectral variance (stationary noise), low crest factor.
+  // Score rewards high crowd presence BEFORE the gap dropping off AFTER it.
+  const crowdSmooth = new Float32Array(numFrames);
+  if (wCrowd > 0) {
+    setStatus('detectStatus', 'info', '🧠 Computing crowd energy…');
+    await new Promise(r => setTimeout(r, 10));
+    const crowdFftSize = 1024;
+    const crowdBins    = crowdFftSize >> 1;
+    const binHz        = sr / crowdFftSize;
+    const midLo = Math.floor(200  / binHz);
+    const midHi = Math.ceil(4000  / binHz);
+    const crowdArr = new Float32Array(numFrames);
+    let prevMidBand = new Float32Array(midHi - midLo);
+    for (let f = 0; f < numFrames; f++) {
+      const frame = new Float32Array(crowdFftSize);
+      const s0 = f * hopSize;
+      for (let i = 0; i < crowdFftSize; i++) {
+        const si = s0 + i;
+        frame[i] = si < data0.length ? (data0[si] + data1[si]) * 0.5 : 0;
+      }
+      const mag = realFFTMagnitude(frame, crowdFftSize);
+      let midSum = 0, totalSum = 0;
+      for (let b = 1; b < crowdBins; b++) { totalSum += mag[b]; if (b >= midLo && b < midHi) midSum += mag[b]; }
+      const midFrac = totalSum > 1e-9 ? midSum / totalSum : 0;
+      let varSum = 0;
+      for (let b = midLo; b < midHi; b++) { const d = mag[b] - prevMidBand[b - midLo]; varSum += d * d; prevMidBand[b - midLo] = mag[b]; }
+      const specVar = Math.min(1, varSum / Math.max(midSum * midSum * 0.01, 1e-9));
+      // Crowd: high mid-band fraction, low spectral variance (steady noise, not transient)
+      crowdArr[f] = midFrac * (1 - Math.min(1, specVar));
+      if (f % 3000 === 0) await new Promise(r => setTimeout(r, 0));
+    }
+    const cs3 = smoothArray(crowdArr, 7);
+    for (let f = 0; f < numFrames; f++) crowdSmooth[f] = cs3[f];
+  }
+
+  setProgress('detectProgress', 68);
+
   // ── PASS 4: Spectral flux + HFC + new signals around each quiet-run ────────
   // We only compute the heavier FFT-based features in a ±2s window around each
   // candidate (not for the whole file) to keep it fast and relevant.
@@ -3614,10 +4292,11 @@ async function detectTracksAdvanced() {
     if (midT < 5 || midT > durSec - 3) continue;
 
     // ── Energy score: deeper silence = higher score ──
-    // silLen: centred on avgSilSec — gaps matching the expected length score ~0.5,
-    // longer gaps score higher (up to 1), shorter gaps score lower (min 0).
-    // This is now purely a signal contribution, not a gate.
-    const silDepth  = 1 - (rmsSmooth[run.midFrame] / (threshLin + 1e-9));
+    // silDepth: how far below the relative threshold is this frame?
+    //   1.0 = completely silent (at or below noise floor p10)
+    //   0.0 = exactly at the threshold (boundary of "quiet" region)
+    // This is always meaningful regardless of absolute dB level.
+    const silDepth  = Math.max(0, (threshLin - rmsSmooth[run.midFrame]) / Math.max(threshLin - energyP10, 1e-9));
     const silLen    = Math.min(1, Math.max(0, run.durationSec / (avgSilSec * 2)));
     const eScore    = (silDepth * 0.6 + silLen * 0.4);
 
@@ -3704,15 +4383,14 @@ async function detectTracksAdvanced() {
     const sfEnd   = Math.min(numFrames, run.end + bpmMusicWinFr);
     let meanStrength = (statsBefore.strength + statsAfter.strength) / 2;
 
-    // BPM score: meaningful only when both sides have a reliable tempo reading
+    // BPM score: meaningful only when both sides have a reliable tempo reading.
+    // Use bpmOctaveDiff so 60↔120↔180 score as 0 (same tempo, not a change).
     let bScore = 0;
     if (wBpm > 0
         && statsBefore.bpm > 40 && statsAfter.bpm > 40
         && statsBefore.strength >= minBpmStrength
         && statsAfter.strength  >= minBpmStrength) {
-      bScore = Math.min(1,
-        Math.abs(statsBefore.bpm - statsAfter.bpm) /
-        Math.max(statsBefore.bpm, statsAfter.bpm, 1));
+      bScore = Math.min(1, bpmOctaveDiff(statsBefore.bpm, statsAfter.bpm) * 2);
     }
 
     // ── Hi-pass BPM score: same approach on the snare/hi-hat band ──
@@ -3725,9 +4403,7 @@ async function detectTracksAdvanced() {
       if (hpBefore.bpm > 40 && hpAfter.bpm > 40
           && hpBefore.strength >= minBpmStrength
           && hpAfter.strength  >= minBpmStrength) {
-        bHpScore = Math.min(1,
-          Math.abs(hpBefore.bpm - hpAfter.bpm) /
-          Math.max(hpBefore.bpm, hpAfter.bpm, 1));
+        bHpScore = Math.min(1, bpmOctaveDiff(hpBefore.bpm, hpAfter.bpm) * 2);
       }
       // Blend hi-pass strength into beat guard
       const meanHpStr = (hpBefore.strength + hpAfter.strength) / 2;
@@ -3783,8 +4459,24 @@ async function detectTracksAdvanced() {
     const beatSuppression = Math.max(0, (meanStrength - 0.3) / 0.7);  // 0 → 1 ramp
     const guardedEScore   = eScore * (1 - beatSuppression * 0.75);     // suppress up to 75%
 
-    // Weighted fusion — all nine signals
-    const totalW   = (wEnergy + wFlux + wBpm + wHfc + wBpmHp + wOnset + wCentroid + wChroma + wDynamic) || 1;
+    // ── Crowd energy score ──
+    // Rewards sustained crowd noise before the gap that drops after it.
+    let crwScore = 0;
+    if (wCrowd > 0) {
+      const crowdWin     = Math.ceil(10 / hopSec);
+      const crowdWinPost = candidateWindow;
+      let crwBefore = 0, crwAfter = 0, cntB = 0, cntA = 0;
+      for (let f = Math.max(0, run.start - crowdWin); f < run.start; f++) { crwBefore += crowdSmooth[f]; cntB++; }
+      for (let f = run.end; f < Math.min(numFrames, run.end + crowdWinPost); f++) { crwAfter += crowdSmooth[f]; cntA++; }
+      crwBefore = cntB > 0 ? crwBefore / cntB : 0;
+      crwAfter  = cntA > 0 ? crwAfter  / cntA : 0;
+      if (crwBefore > 0.05) {
+        crwScore = Math.min(1, Math.max(0, (crwBefore - crwAfter) / Math.max(crwBefore, 1e-9)));
+      }
+    }
+
+    // Weighted fusion — all ten signals
+    const totalW   = (wEnergy + wFlux + wBpm + wHfc + wBpmHp + wOnset + wCentroid + wChroma + wDynamic + wCrowd) || 1;
     const rawScore = (
       guardedEScore * wEnergy +
       fScore        * wFlux   +
@@ -3794,7 +4486,8 @@ async function detectTracksAdvanced() {
       oScore        * wOnset  +
       cScore        * wCentroid +
       0             * wChroma + // chroma computed below per-candidate (heavier)
-      dScore        * wDynamic
+      dScore        * wDynamic  +
+      crwScore      * wCrowd
     ) / totalW;
 
     scoredRuns.push({
@@ -3802,8 +4495,10 @@ async function detectTracksAdvanced() {
       midFrame:    run.midFrame,
       durationSec: run.durationSec,
       score:       rawScore,
+      guardedEScore,          // cached — weight-independent
       eScore:      guardedEScore,
-      fScore, hScore, bScore, bHpScore, oScore, cScore, dScore,
+      fScore, hScore, bScore, bHpScore, oScore, cScore, dScore, crwScore,
+      chromaScore: 0,         // filled in by pass 4b
       beatSuppression,
       // store run boundaries for chroma pass below
       runStart: run.start, runEnd: run.end,
@@ -3871,89 +4566,106 @@ async function detectTracksAdvanced() {
       let dot = 0;
       for (let c = 0; c < 12; c++) dot += chromaBefore[c] * chromaAfter[c];
       const chromaDist = Math.max(0, 1 - dot);   // 0 = same key, 1 = maximally different
-      run.chromaScore  = chromaDist;
-      // Re-compute score including chroma
-      const totalW = (wEnergy + wFlux + wBpm + wHfc + wBpmHp + wOnset + wCentroid + wChroma + wDynamic) || 1;
-      run.score = (
-        run.eScore    * wEnergy   +
-        run.fScore    * wFlux     +
-        run.bScore    * wBpm      +
-        run.hScore    * wHfc      +
-        run.bHpScore  * wBpmHp    +
-        run.oScore    * wOnset    +
-        run.cScore    * wCentroid +
-        chromaDist    * wChroma   +
-        run.dScore    * wDynamic
-      ) / totalW;
+      run.chromaScore  = chromaDist;              // cached for instant weight re-application
       if (ri % 3 === 0) await new Promise(r => setTimeout(r, 0));
     }
   }
 
   setProgress('detectProgress', 80);
 
-  // ── PASS 5: Best-candidate selection with min-track enforcement ───────────
-  // When multiple scored silence runs are close together (within minTrkSec),
-  // they're competing for the same real boundary. Pick the highest-scoring
-  // one per cluster instead of the first one that clears the gap.
-  scoredRuns.sort((a, b) => a.time - b.time);
+  // ── Store all per-candidate signal scores in the cache ────────────────────
+  // Every run now has: guardedEScore, fScore, hScore, bScore, bHpScore,
+  // oScore, cScore, dScore, crwScore, chromaScore — all weight-independent.
+  // PASS 5 (fusion + selection) can be rerun instantly by reading these.
+  advancedSignalCache = {
+    fileKey:    _advFileKey(),
+    avgSilSec, minTrkSec,
+    numFrames, hopSec, durSec,
+    scoredRuns,
+    bpmEstimates, bpmPerFrame,
+  };
 
-  // Score threshold — directly from the Score Threshold selector
+  // ── PASS 5: Fuse signals with current weights and select boundaries ───────
+  _advSelectFromCache(scoreThresholdVal);
+
+  // ── Status ────────────────────────────────────────────────────────────────
+  // (Status is reported by the calling wrapper — detectTracksAdvanced)
+}
+
+
+// ── Pass 5: weight fusion + boundary selection (reads from cache) ──────────
+// Called on first analysis AND whenever weights / threshold change afterwards.
+function _advSelectFromCache(scoreThresholdVal) {
+  const c = advancedSignalCache;
+  if (!c) return;
+
+  const { scoredRuns, bpmEstimates, bpmPerFrame, numFrames, hopSec, durSec } = c;
+  const minTrkSec = parseFloat(document.getElementById('advMinTrack').value) || 20;
+
+  const wEnergy   = parseFloat(document.getElementById('wEnergy').value);
+  const wFlux     = parseFloat(document.getElementById('wFlux').value);
+  const wBpm      = parseFloat(document.getElementById('wBpm').value);
+  const wHfc      = parseFloat(document.getElementById('wHfc').value);
+  const wBpmHp    = parseFloat(document.getElementById('wBpmHp').value);
+  const wOnset    = parseFloat(document.getElementById('wOnset').value);
+  const wCentroid = parseFloat(document.getElementById('wCentroid').value);
+  const wChroma   = parseFloat(document.getElementById('wChroma').value);
+  const wDynamic  = parseFloat(document.getElementById('wDynamic').value);
+  const wCrowd    = parseFloat(document.getElementById('wCrowd').value) || 0;
+  const totalW    = (wEnergy + wFlux + wBpm + wHfc + wBpmHp + wOnset + wCentroid + wChroma + wDynamic + wCrowd) || 1;
+
+  // Re-fuse all per-candidate raw scores with the current weights
+  for (const run of scoredRuns) {
+    run.score = (
+      (run.guardedEScore || 0) * wEnergy   +
+      (run.fScore        || 0) * wFlux     +
+      (run.bScore        || 0) * wBpm      +
+      (run.hScore        || 0) * wHfc      +
+      (run.bHpScore      || 0) * wBpmHp    +
+      (run.oScore        || 0) * wOnset    +
+      (run.cScore        || 0) * wCentroid +
+      (run.chromaScore   || 0) * wChroma   +
+      (run.dScore        || 0) * wDynamic  +
+      (run.crwScore      || 0) * wCrowd
+    ) / totalW;
+  }
+
+  scoredRuns.sort((a, b) => a.time - b.time);
   const scoreThreshold = scoreThresholdVal;
 
-  // Step 1: group into clusters of runs that are < minTrkSec apart
+  // Cluster nearby candidates, pick best per cluster
   const runClusters = [];
   for (const run of scoredRuns) {
     if (run.time < 5) continue;
-    if (run.score < scoreThreshold * 0.6) continue; // drop obviously weak ones early
+    if (run.score < scoreThreshold * 0.6) continue;
     const last = runClusters[runClusters.length - 1];
-    if (last && run.time - last[last.length - 1].time < minTrkSec) {
-      last.push(run);
-    } else {
-      runClusters.push([run]);
-    }
+    if (last && run.time - last[last.length - 1].time < minTrkSec) last.push(run);
+    else runClusters.push([run]);
   }
 
-  // Step 2: from each cluster, pick the best-scoring run
-  const bestRuns = runClusters.map(cluster =>
-    cluster.reduce((best, r) => r.score > best.score ? r : best)
-  );
-
-  // Collect non-best cluster members as near-misses
+  const bestRuns = runClusters.map(cl => cl.reduce((b, r) => r.score > b.score ? r : b));
   const nearMissArr = [];
-  for (const cluster of runClusters) {
-    const best = cluster.reduce((b, r) => r.score > b.score ? r : b);
-    for (const r of cluster) {
-      if (r !== best) nearMissArr.push({ ...r, reason: 'not-best-in-cluster' });
-    }
+  for (const cl of runClusters) {
+    const best = cl.reduce((b, r) => r.score > b.score ? r : b);
+    for (const r of cl) if (r !== best) nearMissArr.push({ ...r, reason: 'not-best-in-cluster' });
   }
 
-  // Step 3: greedy left-to-right on best-per-cluster candidates only
   const accepted = [];
   let lastTime = 0;
-
   for (const run of bestRuns) {
     const gap  = run.time - lastTime;
     const tail = durSec - run.time;
-
     if (run.score < scoreThreshold) {
-      if (run.score >= scoreThreshold * 0.6 && (durSec - run.time) >= minTrkSec) nearMissArr.push({ ...run, reason: 'low-score' });
+      if (run.score >= scoreThreshold * 0.6 && tail >= minTrkSec) nearMissArr.push({ ...run, reason: 'low-score' });
       continue;
     }
-
-    if (gap >= minTrkSec && tail >= minTrkSec) {
-      accepted.push(run);
-      lastTime = run.time;
-    } else {
-      nearMissArr.push({ ...run, reason: 'short-track' });
-    }
+    if (gap >= minTrkSec && tail >= minTrkSec) { accepted.push(run); lastTime = run.time; }
+    else nearMissArr.push({ ...run, reason: 'short-track' });
   }
-
 
   setProgress('detectProgress', 92);
 
-  // Apply total-track count constraint (if user specified one)
-  // Pool = all scoredRuns (every silence candidate that was scored)
-  splitPoints    = applyTrackCount(accepted, scoredRuns, durSec, minTrkSec);
+  splitPoints = applyTrackCount(accepted, scoredRuns, durSec, minTrkSec);
   splitConfidence = {};
   const maxScore = accepted.length ? Math.max(...accepted.map(r => r.score)) : 1;
   accepted.forEach(r => {
@@ -3962,23 +4674,37 @@ async function detectTracksAdvanced() {
 
   nearMissPoints = nearMissArr
     .filter(nm => splitPoints.every(sp => Math.abs(sp - nm.time) > 3) && nm.time >= 5 && nm.time <= durSec - minTrkSec)
-    .slice(0, 20)  // cap near-misses
+    .slice(0, 20)
     .map(nm => ({ time: nm.time, silDuration: nm.durationSec, score: nm.score, reason: nm.reason }));
 
   // ── BPM Summary ───────────────────────────────────────────────────────────
-  // Dominant BPM = mode of all estimates weighted by strength, bucketed to ±3 BPM
+  const foldBpm = v => { while (v >= 80) v /= 2; while (v < 40) v *= 2; return v; };
   const bpmBuckets = {};
   for (const e of bpmEstimates) {
     if (!e.bpm || e.bpm < 40 || e.bpm > 240) continue;
-    const b = Math.round(e.bpm / 3) * 3; // 3-BPM buckets reduce noise
+    const b = Math.round(foldBpm(e.bpm) / 3) * 3;
     bpmBuckets[b] = (bpmBuckets[b] || 0) + e.strength;
   }
-  let dominantBpm = 0, dominantScore = 0;
+  let dominantBpmFolded = 0, dominantScore = 0;
   for (const [b, s] of Object.entries(bpmBuckets)) {
-    if (s > dominantScore) { dominantScore = s; dominantBpm = parseInt(b); }
+    if (s > dominantScore) { dominantScore = s; dominantBpmFolded = parseInt(b); }
+  }
+  let dominantBpm = dominantBpmFolded;
+  {
+    const domBucketCounts = {};
+    for (const e of bpmEstimates) {
+      if (!e.bpm || e.bpm < 40 || e.bpm > 240) continue;
+      if (Math.round(foldBpm(e.bpm) / 3) * 3 !== dominantBpmFolded) continue;
+      const b2 = Math.round(e.bpm / 3) * 3;
+      domBucketCounts[b2] = (domBucketCounts[b2] || 0) + e.strength;
+    }
+    let bestB = dominantBpmFolded, bestS = 0;
+    for (const [b, s] of Object.entries(domBucketCounts)) {
+      if (s > bestS) { bestS = s; bestB = parseInt(b); }
+    }
+    dominantBpm = bestB;
   }
 
-  // Per-segment BPM — median of estimates whose frameCenter falls within the segment
   const segBpmFn = (start, end) => {
     const fS = Math.floor(start / hopSec);
     const fE = Math.floor(end   / hopSec);
@@ -3988,17 +4714,12 @@ async function detectTracksAdvanced() {
     }
     if (!vals.length) return dominantBpm;
     vals.sort((a, b) => a - b);
-    // Use median and snap to nearest 3-BPM bucket (consistent with dominant calc)
-    const raw = vals[Math.floor(vals.length / 2)];
-    return Math.round(raw / 3) * 3;
+    return Math.round(vals[Math.floor(vals.length / 2)] / 3) * 3;
   };
 
   setProgress('detectProgress', 100);
   rebuildSegments();
 
-  // Attach per-segment BPM and build a CLEAN step-function BPM map for the waveform
-  // Each segment gets one steady BPM value → the waveform line is flat within a track
-  // and steps only at real boundaries. This is far more readable than the raw noisy curve.
   const segmentBpmMap = new Float32Array(numFrames).fill(dominantBpm);
   trackSegments.filter(s => !s.isNearMiss).forEach(seg => {
     seg.segBpm = segBpmFn(seg.start, seg.end);
@@ -4006,55 +4727,41 @@ async function detectTracksAdvanced() {
     const fE = Math.min(numFrames, Math.floor(seg.end / hopSec));
     segmentBpmMap.fill(seg.segBpm, fS, fE);
   });
-  lastBpmMap = segmentBpmMap;  // clean step-function, not the raw noisy per-frame array
+  lastBpmMap = segmentBpmMap;
 
   drawWaveform();
   drawOverview();
   renderTrackList();
 
-  // ── Show BPM results ──────────────────────────────────────────────────────
-  const bpmStrip = document.getElementById('bpmStrip');
+  // BPM strip
+  const bpmStrip     = document.getElementById('bpmStrip');
+  const bpmStripText = document.getElementById('bpmStripText');
   if (dominantBpm > 0) {
     const realSegs = trackSegments.filter(s => !s.isNearMiss);
-
     const tempoEntries = realSegs
       .filter(seg => seg.segBpm && seg.segBpm > 0)
-      .map((seg, i) => ({ i: i + startTrackNum, bpm: seg.segBpm, title: seg.title }));
-
-    const allMatch = tempoEntries.every(e => Math.abs(e.bpm - dominantBpm) <= 3);
-
+      .map((seg, i) => ({ i: i + startTrackNum, bpm: seg.segBpm }));
+    const allMatch = tempoEntries.every(e => bpmOctaveDiff(e.bpm, dominantBpm) <= 0.05);
     let tempoHtml;
     if (allMatch || tempoEntries.length <= 1) {
       tempoHtml = `<span style="color:var(--groove);opacity:0.8">Consistent throughout</span>`;
     } else {
       tempoHtml = tempoEntries.map(e => {
-        const diff = Math.abs(e.bpm - dominantBpm);
-        const col  = diff > 6 ? 'var(--red)' : 'var(--groove)';
-        const tip  = `Track ${e.i}: ${e.bpm} BPM`;
-        return `<span title="${tip}" style="color:${col}">T${e.i} ${e.bpm}</span>`;
+        const diff = bpmOctaveDiff(e.bpm, dominantBpm);
+        const col  = diff > 0.1 ? 'var(--red)' : 'var(--groove)';
+        return `<span title="Track ${e.i}: ${e.bpm} BPM" style="color:${col}">T${e.i} ${e.bpm}</span>`;
       }).join(' <span style="opacity:0.3">·</span> ');
     }
-
-    bpmStrip.innerHTML =
-      `<strong style="color:var(--ink)">♩ ${dominantBpm} BPM</strong>` +
-      `<span style="opacity:0.4;margin:0 0.6rem">|</span>` +
-      `<span style="opacity:0.6;font-size:0.65rem">per track: </span>${tempoHtml}`;
-    bpmStrip.style.display = 'block';
+    if (bpmStripText) {
+      bpmStripText.innerHTML =
+        `<strong style="color:var(--ink)">♩ ${dominantBpm} BPM</strong>` +
+        `<span style="opacity:0.4;margin:0 0.6rem">|</span>` +
+        `<span style="opacity:0.6;font-size:0.65rem">per track: </span>${tempoHtml}`;
+    }
+    if (bpmStrip) bpmStrip.style.display = 'block';
   } else {
-    bpmStrip.style.display = 'none';
+    if (bpmStrip) bpmStrip.style.display = 'none';
   }
-
-
-  // ── Status ────────────────────────────────────────────────────────────────
-  const count   = trackSegments.filter(s => !s.isNearMiss).length;
-  const nmCount = nearMissPoints.length;
-  const bpmNote = dominantBpm > 0 ? ` · ${dominantBpm} BPM detected` : '';
-  setStatus('detectStatus', count > 1 ? 'success' : 'info',
-    count > 1
-      ? `✓ Found ${count} tracks${bpmNote}${nmCount ? ` · ${nmCount} near-miss${nmCount > 1 ? 'es' : ''} flagged` : ''}.`
-      : `⚠ No boundaries found at current settings. Try Permissive score threshold, or lower the Threshold (dB) in Simple mode.`
-  );
-  btn.disabled = false;
 }
 
 
@@ -4135,39 +4842,176 @@ function normalise01(arr) {
   return out;
 }
 
-// Estimate BPM from a short RMS envelope using autocorrelation
-// frameDurSec = seconds per frame in the input slice
-function estimateBPM(rmsSlice, frameDurSec) {
-  const n = rmsSlice.length;
-  if (n < 20) return { bpm: 0, strength: 0 };
+// ── Onset Detection Function (ODF) builder ────────────────────────────────
+// Computes a per-frame onset strength signal from raw PCM using spectral
+// flux: the sum of positive bin-wise magnitude differences frame-to-frame.
+// This fires on transients (drum hits, note attacks) rather than just
+// loudness, making it far more informative for beat tracking than RMS alone.
+//
+//   data0, data1  — raw PCM channels
+//   hopSize       — samples per frame (should match the caller's hop)
+//   odfFftSize    — FFT window (256 is fast and sufficient for beat tracking)
+//   startSamp     — first sample index offset into channel arrays
+//   numFrames     — number of frames to compute
+//
+// Returns a Float32Array of half-wave-rectified spectral flux values.
+function buildODF(data0, data1, hopSize, odfFftSize, startSamp, numFrames) {
+  const bins    = odfFftSize >> 1;
+  const odf     = new Float32Array(numFrames);
+  const winCoef = new Float32Array(odfFftSize);
+  for (let i = 0; i < odfFftSize; i++) {
+    winCoef[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / (odfFftSize - 1));
+  }
+  let prevMag = new Float32Array(bins);
 
-  // Zero-mean
-  let mean = 0;
-  for (let i = 0; i < n; i++) mean += rmsSlice[i];
-  mean /= n;
-
-  // Autocorrelation — only lags corresponding to 40–220 BPM
-  const bpmLo = 40, bpmHi = 220;
-  const lagLoFr = Math.floor(60 / (bpmHi * frameDurSec));
-  const lagHiFr = Math.ceil (60 / (bpmLo * frameDurSec));
-  const lagLo   = Math.max(1, lagLoFr);
-  const lagHi   = Math.min(n - 1, lagHiFr);
-
-  let bestLag = lagLo, bestAc = -Infinity;
-  for (let lag = lagLo; lag <= lagHi; lag++) {
-    let ac = 0;
-    for (let i = 0; i + lag < n; i++) {
-      ac += (rmsSlice[i] - mean) * (rmsSlice[i + lag] - mean);
+  for (let f = 0; f < numFrames; f++) {
+    const frame = new Float32Array(odfFftSize);
+    const s0    = startSamp + f * hopSize;
+    for (let i = 0; i < odfFftSize; i++) {
+      const si = s0 + i;
+      const s  = si < data0.length ? (data0[si] + data1[si]) * 0.5 : 0;
+      frame[i] = s * winCoef[i];
     }
-    if (ac > bestAc) { bestAc = ac; bestLag = lag; }
+    const mag = realFFTMagnitude(frame, odfFftSize);
+    let flux = 0;
+    for (let b = 0; b < bins; b++) {
+      const diff = mag[b] - prevMag[b];
+      if (diff > 0) flux += diff;   // half-wave rectification
+    }
+    odf[f]  = flux;
+    prevMag = mag;
+  }
+  return odf;
+}
+
+// ── Octave-aware BPM comparison ────────────────────────────────────────────
+// Music tempo is periodic at integer multiples: a track at 60 BPM is
+// metronomically identical to one at 120 or 180 — just counted in different
+// subdivisions.  All BPM comparisons in this app use this helper so that
+// 60 ↔ 120 ↔ 180 score as 0 difference, not as a large tempo change.
+//
+// Algorithm: fold both values into the octave [base, base×2) by repeatedly
+// halving or doubling until they land in the same range, then compare.
+// Also checks the 3× relationship (triplet/waltz feel) explicitly.
+//
+// Returns a fractional distance 0..1:
+//   0   = metronomically identical (same or integer multiple)
+//   0.5 = clearly different tempo
+//   1   = maximally different within the 40–240 BPM range
+function bpmOctaveDiff(a, b) {
+  if (!a || !b || a < 20 || b < 20) return 1;
+  // Fold both into [40, 80) — the lowest usable octave in our range
+  const fold = v => {
+    while (v >= 80) v /= 2;
+    while (v < 40) v *= 2;
+    return v;
+  };
+  const fa = fold(a), fb = fold(b);
+  // Raw fractional diff in the folded octave
+  const d0 = Math.abs(fa - fb) / Math.max(fa, fb);
+  // Also check ×3/×(1/3) relationship (60↔180, 80↔240, etc.)
+  // Fold a×3 and b×3 and compare with the other
+  const fa3 = fold(a * 3), fb3 = fold(b * 3);
+  const d3a = Math.abs(fa3 - fb) / Math.max(fa3, fb);   // a×3 vs b
+  const d3b = Math.abs(fa - fb3) / Math.max(fa, fb3);   // a vs b×3
+  return Math.min(d0, d3a, d3b);
+}
+
+// ── Improved BPM estimator ─────────────────────────────────────────────────
+// Replaces the old RMS-autocorrelation approach with an ODF-based beat
+// tracker.  The caller should pass a spectral-flux ODF slice (from buildODF)
+// rather than an RMS slice — the ODF fires on actual note onsets, giving
+// autocorrelation a clean periodic signal to lock on to.
+//
+// Algorithm:
+//   1. Normalise the ODF slice to [0,1] and zero-mean it.
+//   2. Autocorrelate over lags spanning 40–220 BPM — but normalise each
+//      lag by the number of pairs to remove short-lag bias.
+//   3. Apply a comb filter: boost candidate lags whose double, half and
+//      3/2 period also show strong autocorrelation.  This eliminates
+//      octave confusions (detecting 65 BPM instead of 130, etc.).
+//   4. Parabolic interpolation around the peak for sub-frame precision.
+//   5. Return { bpm, strength } where strength is a 0..1 confidence score.
+//
+// Falls back gracefully: if the signal is flat (no onsets) returns 0/0.
+function estimateBPM(odfSlice, frameDurSec) {
+  const n = odfSlice.length;
+  if (n < 32) return { bpm: 0, strength: 0 };
+
+  // ── 1. Normalise ──────────────────────────────────────────────────────────
+  let mn = Infinity, mx = -Infinity;
+  for (let i = 0; i < n; i++) {
+    if (odfSlice[i] < mn) mn = odfSlice[i];
+    if (odfSlice[i] > mx) mx = odfSlice[i];
+  }
+  const range = mx - mn;
+  if (range < 1e-9) return { bpm: 0, strength: 0 };  // flat signal → no beat
+
+  const norm = new Float32Array(n);
+  let mean = 0;
+  for (let i = 0; i < n; i++) { norm[i] = (odfSlice[i] - mn) / range; mean += norm[i]; }
+  mean /= n;
+  for (let i = 0; i < n; i++) norm[i] -= mean;        // zero-mean
+
+  // ── 2. Autocorrelation over beat-lag range ────────────────────────────────
+  const bpmLo = 40, bpmHi = 220;
+  const lagLo = Math.max(1, Math.floor(60 / (bpmHi * frameDurSec)));
+  const lagHi = Math.min(n - 1, Math.ceil(60 / (bpmLo * frameDurSec)));
+  if (lagLo >= lagHi) return { bpm: 0, strength: 0 };
+
+  const ac = new Float32Array(lagHi + 1);
+  for (let lag = lagLo; lag <= lagHi; lag++) {
+    let s = 0;
+    const len = n - lag;
+    for (let i = 0; i < len; i++) s += norm[i] * norm[i + lag];
+    ac[lag] = s / len;   // per-pair normalisation removes short-lag bias
   }
 
-  // Normalise by zero-lag power
+  // Zero-lag power (per-sample, consistent with per-pair normalisation above)
   let zeroAc = 0;
-  for (let i = 0; i < n; i++) { const v = rmsSlice[i] - mean; zeroAc += v * v; }
+  for (let i = 0; i < n; i++) zeroAc += norm[i] * norm[i];
+  zeroAc /= n;
+  if (zeroAc < 1e-12) return { bpm: 0, strength: 0 };
 
-  const strength = zeroAc > 1e-12 ? Math.max(0, bestAc / zeroAc) : 0;
-  const bpm      = 60 / (bestLag * frameDurSec);
+  // ── 3. Comb filter boost ──────────────────────────────────────────────────
+  // For each candidate lag τ, add weighted bonuses at 2τ (half-time),
+  // τ/2 (double-time), 3τ (triple time) and τ/3 (one-third time).
+  // This de-octaves across all integer multiples: 60↔120↔180, 90↔180, etc.
+  const combScore = new Float32Array(lagHi + 1);
+  for (let lag = lagLo; lag <= lagHi; lag++) {
+    let score = ac[lag];
+    const lag2  = lag * 2;
+    const lagH  = Math.round(lag / 2);
+    const lag3  = lag * 3;
+    const lagT  = Math.round(lag / 3);
+    const lag32 = Math.round(lag * 1.5);
+    if (lag2  <= lagHi)                    score += ac[lag2]  * 0.5;
+    if (lagH  >= lagLo)                    score += ac[lagH]  * 0.5;
+    if (lag3  <= lagHi)                    score += ac[lag3]  * 0.35;
+    if (lagT  >= lagLo)                    score += ac[lagT]  * 0.35;
+    if (lag32 >= lagLo && lag32 <= lagHi)  score += ac[lag32] * 0.25;
+    combScore[lag] = score;
+  }
+
+  // ── 4. Find best lag with parabolic refinement ───────────────────────────
+  let bestLag = lagLo, bestScore = -Infinity;
+  for (let lag = lagLo; lag <= lagHi; lag++) {
+    if (combScore[lag] > bestScore) { bestScore = combScore[lag]; bestLag = lag; }
+  }
+
+  let refinedLag = bestLag;
+  if (bestLag > lagLo && bestLag < lagHi) {
+    const prev = combScore[bestLag - 1];
+    const curr = combScore[bestLag];
+    const next = combScore[bestLag + 1];
+    const denom = 2 * (2 * curr - prev - next);
+    if (Math.abs(denom) > 1e-9) refinedLag = bestLag + (prev - next) / denom;
+  }
+
+  const bpm      = 60 / (refinedLag * frameDurSec);
+  const strength = Math.min(1, Math.max(0, ac[bestLag] / zeroAc));
+
+  if (bpm < bpmLo || bpm > bpmHi) return { bpm: 0, strength: 0 };
 
   return { bpm, strength };
 }
@@ -4272,7 +5116,7 @@ function renderTrackList() {
       ? `track-item-wrap near-miss${stateClass}`
       : `track-item-wrap${stateClass}${cc ? ' '+cc : ''}`;
 
-    const hasOverride = !!(seg.trackArtist || seg.trackAlbum || seg.trackGenre);
+    const hasOverride = !!(seg.trackArtist || seg.trackAlbum || seg.trackGenre || seg.trackBpm);
     const cl = isNM ? null : confLabel(seg.confidence);
 
     const nmReason = isNM
@@ -4328,6 +5172,10 @@ function renderTrackList() {
         <div class="field" style="max-width:130px">
           <label>Genre</label>
           <input type="text" id="track-genre-${i}" value="${esc(seg.trackGenre||'')}" placeholder="e.g. Reggae" oninput="setTrackMeta(${i},'trackGenre',this.value)">
+        </div>
+        <div class="field" style="max-width:80px">
+          <label>BPM</label>
+          <input type="text" id="track-bpm-${i}" value="${seg.trackBpm ? Math.round(seg.trackBpm) : ''}" placeholder="e.g. 120" oninput="setTrackMeta(${i},'trackBpm',this.value?parseFloat(this.value)||null:null)">
         </div>
         <div style="display:flex;gap:0.4rem;align-items:flex-end;flex-shrink:0">
           <button class="btn-bulk" style="background:#eee;color:var(--groove);font-size:0.62rem" onclick="clearTrackMeta(${i})">Clear</button>
@@ -4388,6 +5236,8 @@ function clearTrackMeta(i) {
   delete trackSegments[i].trackArtist;
   delete trackSegments[i].trackAlbum;
   delete trackSegments[i].trackYear;
+  delete trackSegments[i].trackGenre;
+  delete trackSegments[i].trackBpm;
   renderTrackList();
 }
 
@@ -4397,10 +5247,11 @@ function toggleBulkBar() {
 }
 
 function applyBulkSmart() {
-  const artist = document.getElementById('bulkArtist').value.trim();
-  const album  = document.getElementById('bulkAlbum').value.trim();
-  const year   = document.getElementById('bulkYear')  ? document.getElementById('bulkYear').value.trim()  : '';
-  const genre  = document.getElementById('bulkGenre') ? document.getElementById('bulkGenre').value.trim() : '';
+  // Read from the unified metadata box (meta fields)
+  const artist = document.getElementById('metaArtist').value.trim();
+  const album  = document.getElementById('metaAlbum').value.trim();
+  const year   = document.getElementById('metaYear').value.trim();
+  const genre  = document.getElementById('metaGenre').value.trim();
   const anySelected = trackSegments.some((_, i) => {
     const cb = document.getElementById(`sel-${i}`);
     return cb && cb.checked;
@@ -4415,9 +5266,6 @@ function applyBulkSmart() {
     if (year)   seg.trackYear   = year;
     if (genre)  seg.trackGenre  = genre;
   });
-  // Mirror to global meta fields if set
-  if (year)  { const el = document.getElementById('metaYear');  if (el && !el.value) el.value = year; }
-  if (genre) { const el = document.getElementById('metaGenre'); if (el && !el.value) el.value = genre; }
   renderTrackList();
 }
 
@@ -4531,7 +5379,7 @@ function addManualSplit() {
 }
 
 // ── Song Recognition ───────────────────────────────────────────────────────
-let recogService = 'audd'; // 'audd' | 'shazam'
+let recogService = 'shazam'; // 'shazam' | 'audd'
 
 function setRecogService(svc) {
   recogService = svc;
@@ -4755,18 +5603,35 @@ async function identifyAllTracks() {
   const btn = document.getElementById('btnIdentifyAll');
   btn.disabled = true;
 
+  // If any checkboxes are ticked, restrict to those; otherwise process all untagged
+  const anySelected = trackSegments.some((_, i) => {
+    const cb = document.getElementById(`sel-${i}`);
+    return cb && cb.checked;
+  });
+
   const targets = trackSegments
     .map((s, i) => ({ s, i }))
-    .filter(({ s }) => !s.isNearMiss && (!s.title || s.title.match(/^Track \d+$/)));
+    .filter(({ s, i }) => {
+      if (s.isNearMiss) return false;
+      if (anySelected) {
+        const cb = document.getElementById(`sel-${i}`);
+        if (!cb || !cb.checked) return false;
+      }
+      // Only process tracks that still have a default/untagged title
+      return !s.title || s.title.match(/^Track \d+$/);
+    });
 
   if (!targets.length) {
-    setStatus('acrStatus', 'info', 'ℹ All tracks already have titles.');
+    setStatus('acrStatus', 'info', anySelected
+      ? 'ℹ All selected tracks already have titles.'
+      : 'ℹ All tracks already have titles.');
     btn.disabled = false;
     return;
   }
 
   let matched = 0, failed = 0;
-  setStatus('acrStatus', 'info', `⏳ Identifying ${targets.length} tracks…`);
+  const scopeLabel = anySelected ? `${targets.length} selected` : `${targets.length}`;
+  setStatus('acrStatus', 'info', `⏳ Identifying ${scopeLabel} track${targets.length !== 1 ? 's' : ''}…`);
 
   for (let ti = 0; ti < targets.length; ti++) {
     const { i } = targets[ti];
@@ -4785,57 +5650,17 @@ async function identifyAllTracks() {
 // ── MusicBrainz Search ─────────────────────────────────────────────────────
 
 function syncBulkToSearch() {
-  document.getElementById('artistInput').value = document.getElementById('bulkArtist').value;
-  document.getElementById('albumInput').value  = document.getElementById('bulkAlbum').value;
+  // Sync bulk fields into main meta box if meta box is empty
+  const ba = document.getElementById('bulkArtist').value.trim();
+  const bl = document.getElementById('bulkAlbum').value.trim();
+  if (ba && !document.getElementById('metaArtist').value) document.getElementById('metaArtist').value = ba;
+  if (bl && !document.getElementById('metaAlbum').value)  document.getElementById('metaAlbum').value  = bl;
 }
 
+// bulkSearch now just delegates to the unified search in the metadata box
 async function bulkSearch() {
-  // Ensure the bulk bar is visible so the user can see what fields were filled
-  document.getElementById('bulkApplyBar').style.display = 'flex';
-  let artist = document.getElementById('bulkArtist').value.trim();
-  let album  = document.getElementById('bulkAlbum').value.trim();
-
-  document.getElementById('bulkSearchPanel').style.display = 'block';
-  document.getElementById('bulkSearchResults').innerHTML = '';
-  showBulkSearchStatus('info', '🔎 Searching MusicBrainz…');
-  document.getElementById('btnBulkSearch').disabled = true;
-
-  try {
-    let releases;
-
-    if (!artist && !album) {
-      showBulkSearchStatus('info', '🔎 No search terms — guessing from filename / track title…');
-      const guess = await _guessFromTrack();
-      if (!guess) {
-        showBulkSearchStatus('error', 'Enter an artist or album name, or add track titles first.');
-        document.getElementById('btnBulkSearch').disabled = false;
-        return;
-      }
-      document.getElementById('bulkArtist').value = guess.artist;
-      document.getElementById('bulkAlbum').value  = guess.album;
-      artist   = guess.artist;
-      album    = guess.album;
-      releases = guess.releases;
-    } else {
-      const data = await _mbQuery(artist, album);
-      releases = data.releases || [];
-    }
-
-    syncBulkToSearch();
-
-    if (!releases.length) {
-      const tried = [artist && `artist: "${artist}"`, album && `album: "${album}"`].filter(Boolean).join(', ');
-      showBulkSearchStatus('error', `No results found${tried ? ' for ' + tried : ''}. Try different spelling.`);
-      document.getElementById('btnBulkSearch').disabled = false;
-      return;
-    }
-    showBulkSearchStatus('info', `Found ${releases.length} release(s). Select one:`);
-    renderBulkSearchResults(releases);
-    document.getElementById('bulkSearchPanel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  } catch(e) {
-    showBulkSearchStatus('error', `Search failed: ${e.message}. MusicBrainz may be temporarily unavailable.`);
-  }
-  document.getElementById('btnBulkSearch').disabled = false;
+  syncBulkToSearch();
+  await searchMusicBrainz();
 }
 
 function showBulkSearchStatus(type, msg) {
@@ -4919,11 +5744,11 @@ async function selectBulkRelease(rel, el) {
     const _bgEl = document.getElementById('bulkGenre'); if (_bgEl) _bgEl.value = genres;
     document.getElementById('artistInput').value = artistName;
     document.getElementById('albumInput').value  = data.title || '';
+    document.getElementById('metaAlbumArtist').value = artistName;
     document.getElementById('metaArtist').value  = artistName;
     document.getElementById('metaAlbum').value   = data.title || '';
     document.getElementById('metaYear').value    = year;
     document.getElementById('metaGenre').value   = genres;
-    document.getElementById('metaFields').style.display = 'block';
 
     if (data.media && data.media.length) {
       const allTracks = data.media.flatMap(m => m.tracks || []);
@@ -4950,7 +5775,7 @@ async function selectBulkRelease(rel, el) {
 // Try a single MB release query, return parsed JSON (throws on HTTP error)
 async function _mbQuery(artist, album) {
   const q = [artist && `artist:"${artist}"`, album && `release:"${album}"`].filter(Boolean).join(' AND ');
-  const url = `https://musicbrainz.org/ws/2/release/?query=${encodeURIComponent(q)}&limit=5&fmt=json`;
+  const url = `https://musicbrainz.org/ws/2/release/?query=${encodeURIComponent(q)}&limit=10&fmt=json`;
   const res = await fetch(url, { headers: { 'User-Agent': 'VinylSplitter/1.0 (browser-tool)' } });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
@@ -5031,8 +5856,11 @@ async function _guessFromTrack() {
 }
 
 async function searchMusicBrainz() {
-  let artist = document.getElementById('artistInput').value.trim();
-  let album  = document.getElementById('albumInput').value.trim();
+  // Read from the visible metadata box; keep hidden aliases in sync for legacy code
+  let artist = document.getElementById('metaArtist').value.trim();
+  let album  = document.getElementById('metaAlbum').value.trim();
+  document.getElementById('artistInput').value = artist;
+  document.getElementById('albumInput').value  = album;
 
   setStatus('searchStatus','info','🔎 Searching MusicBrainz…');
   document.getElementById('searchResults').innerHTML = '';
@@ -5049,6 +5877,8 @@ async function searchMusicBrainz() {
         document.getElementById('searchBtn').disabled = false;
         return;
       }
+      document.getElementById('metaArtist').value = guess.artist;
+      document.getElementById('metaAlbum').value  = guess.album;
       document.getElementById('artistInput').value = guess.artist;
       document.getElementById('albumInput').value  = guess.album;
       artist   = guess.artist;
@@ -5111,11 +5941,14 @@ async function selectRelease(rel, el) {
     const year = data.date ? data.date.substring(0,4) : '';
     const genres = data.genres && data.genres.length ? data.genres[0].name : '';
 
+    document.getElementById('metaAlbumArtist').value = artistName;
     document.getElementById('metaArtist').value = artistName;
     document.getElementById('metaAlbum').value = data.title || '';
     document.getElementById('metaYear').value = year;
     document.getElementById('metaGenre').value = genres;
-    document.getElementById('metaFields').style.display = 'block';
+    // sync hidden aliases
+    document.getElementById('artistInput').value = artistName;
+    document.getElementById('albumInput').value  = data.title || '';
 
     // Apply track titles and known durations (only to real segments, not near-misses)
     // startTrackNum offset: if Side B starts at track 4, skip the first 3 MB tracks
@@ -5196,11 +6029,11 @@ async function applySplitsFromRelease(releaseId, btnEl) {
     const year   = data.date ? data.date.substring(0, 4) : '';
     const genres = data.genres && data.genres.length ? data.genres[0].name : '';
 
+    document.getElementById('metaAlbumArtist').value = artistName;
     document.getElementById('metaArtist').value = artistName;
     document.getElementById('metaAlbum').value  = data.title || '';
     document.getElementById('metaYear').value   = year;
     document.getElementById('metaGenre').value  = genres;
-    document.getElementById('metaFields').style.display = 'block';
     const ba = document.getElementById('bulkArtist'); if (ba) ba.value = artistName;
     const bl = document.getElementById('bulkAlbum');  if (bl) bl.value = data.title || '';
     document.getElementById('artistInput').value = artistName;
@@ -5406,6 +6239,9 @@ async function exportTracks() {
   // Pull from the Step 4 metadata fields first, then fall back to the bulk-bar
   // fields, then to per-track overrides on the first real segment, then defaults.
   const firstRealSeg = trackSegments.find(s => !s.isNearMiss);
+  const globalAlbumArtist = (document.getElementById('metaAlbumArtist') || {}).value?.trim()
+    || document.getElementById('metaArtist').value.trim()
+    || 'Unknown Artist';
   const globalArtist = document.getElementById('metaArtist').value.trim()
     || document.getElementById('bulkArtist').value.trim()
     || (firstRealSeg && firstRealSeg.trackArtist)
@@ -5422,9 +6258,9 @@ async function exportTracks() {
     || '';
 
   if (exportFormat === 'cue') { exportCueSheet(globalArtist, globalAlbum, year); return; }
-  if (exportFormat === 'json') { exportJSON(globalArtist, globalAlbum, year, genre); return; }
-  if (exportFormat === 'ffmpeg')    { exportFFmpegScript(globalArtist, globalAlbum, year, genre, 'sh');  return; }
-  if (exportFormat === 'ffmpegbat') { exportFFmpegScript(globalArtist, globalAlbum, year, genre, 'bat'); return; }
+  if (exportFormat === 'json') { exportJSON(globalAlbumArtist, globalArtist, globalAlbum, year, genre); return; }
+  if (exportFormat === 'ffmpeg')    { exportFFmpegScript(globalAlbumArtist, globalArtist, globalAlbum, year, genre, 'sh');  return; }
+  if (exportFormat === 'ffmpegbat') { exportFFmpegScript(globalAlbumArtist, globalArtist, globalAlbum, year, genre, 'bat'); return; }
 
   // WAV export — exclude near-miss rows
   const realSegs = trackSegments.filter(s => !s.isNearMiss);
@@ -5456,6 +6292,7 @@ async function exportTracks() {
       track:  `${absTrack}/${startTrackNum - 1 + realSegs.length}`,
       year:   trackYear,
       genre:  seg.trackGenre || genre,
+      bpm:    seg.trackBpm || null,
     };
     const wav      = bufferToWav(segBuf, meta);
     const safeName = `${sanitize(artist)} - ${sanitize(album)} - ${trackNum} - ${sanitize(meta.title)}.wav`;
@@ -5491,17 +6328,19 @@ function exportCueSheet(globalArtist, globalAlbum, year) {
   setStatus('exportStatus','success','✓ Cue sheet downloaded. Use it with your audio player or ripper.');
 }
 
-function exportJSON(globalArtist, globalAlbum, year, genre) {
+function exportJSON(globalAlbumArtist, globalArtist, globalAlbum, year, genre) {
   const realSegs = trackSegments.filter(s => !s.isNearMiss);
   const obj = {
-    artist: globalArtist, album: globalAlbum, year, genre,
+    albumArtist: globalAlbumArtist, artist: globalArtist, album: globalAlbum, year, genre,
     tracks: realSegs.map((seg, i) => ({
       trackNumber: i + startTrackNum,
       title: seg.title,
+      albumArtist: globalAlbumArtist,
       artist: seg.trackArtist || globalArtist,
       album:  seg.trackAlbum  || globalAlbum,
       year:   seg.trackYear   || year,
       genre:  seg.trackGenre  || genre,
+      bpm:    seg.trackBpm ? Math.round(seg.trackBpm) : null,
       startTime: parseFloat(seg.start.toFixed(3)),
       endTime:   parseFloat(seg.end.toFixed(3)),
       duration:  parseFloat((seg.end - seg.start).toFixed(3))
@@ -5511,7 +6350,7 @@ function exportJSON(globalArtist, globalAlbum, year, genre) {
   setStatus('exportStatus','success','✓ Metadata JSON downloaded.');
 }
 
-function exportFFmpegScript(globalArtist, globalAlbum, year, genre, type = 'sh') {
+function exportFFmpegScript(globalAlbumArtist, globalArtist, globalAlbum, year, genre, type = 'sh') {
   const realSegs = trackSegments.filter(s => !s.isNearMiss);
   const src = originalFile ? originalFile.name : 'input.wav';
   const isBat = type === 'bat';
@@ -5543,6 +6382,7 @@ function exportFFmpegScript(globalArtist, globalAlbum, year, genre, type = 'sh')
     script += `ffmpeg -ss ${seg.start.toFixed(3)} -t ${dur} -i "${src}"${cont}${eol}`;
     script += `  -metadata title="${q(seg.title)}"${cont}${eol}`;
     script += `  -metadata artist="${q(artist)}"${cont}${eol}`;
+    script += `  -metadata album_artist="${q(globalAlbumArtist)}"${cont}${eol}`;
     script += `  -metadata album="${q(album)}"${cont}${eol}`;
     script += `  -metadata track="${absTrack}/${totalTracks}"${cont}${eol}`;
     script += trackYear ? `  -metadata date="${trackYear}"${cont}${eol}` : '';
@@ -5550,6 +6390,7 @@ function exportFFmpegScript(globalArtist, globalAlbum, year, genre, type = 'sh')
       const genres = trackGenreVal.split(';').map(g => g.trim()).filter(Boolean);
       for (const g of genres) script += `  -metadata genre="${q(g)}"${cont}${eol}`;
     }
+    if (seg.trackBpm) script += `  -metadata bpm="${Math.round(seg.trackBpm)}"${cont}${eol}`;
     script += `  -metadata comment="Source: ${q(src)}"${cont}${eol}`;
     script += `  -q:a 0 "${out}"${eol}${eol}`;
   });
@@ -5666,19 +6507,24 @@ function rcAnimatePlayhead() {
   const ph     = document.getElementById('rcPlayhead');
   const f      = currentT / audioBuffer.duration;
 
+  // Suppress auto-scroll for 2 s after the user zoomed — this lets the zoom
+  // anchor to the cursor rather than being immediately overridden by the
+  // playhead panning logic.
+  const autoScrollOk = (Date.now() - lastUserZoomMs) > 2000;
+
   if (f >= viewStart && f <= viewEnd) {
     const pct = ((f - viewStart) / (viewEnd - viewStart)) * 100;
     ph.style.left = `calc(${pct}% - 1px)`;
     ph.classList.add('active');
 
     // Auto-scroll: if playhead nears the right edge (>85%), pan view right
-    if (f > viewEnd - (viewEnd - viewStart) * 0.15) {
+    if (autoScrollOk && f > viewEnd - (viewEnd - viewStart) * 0.15) {
       const span = viewEnd - viewStart;
       viewStart = Math.min(1 - span, f - span * 0.15);
       viewEnd   = viewStart + span;
       syncScrollbar();
     }
-  } else if (f > viewEnd) {
+  } else if (autoScrollOk && f > viewEnd) {
     // Jumped past view: re-centre
     const span = viewEnd - viewStart;
     viewStart = Math.max(0, f - span * 0.15);
@@ -5871,6 +6717,7 @@ function bufferToWav(buf, meta = {}) {
   addInfo('ITRK', meta.track);
   addInfo('ICRD', meta.year);
   addInfo('IGNR', meta.genre);
+  if (meta.bpm) addInfo('IBPM', String(Math.round(meta.bpm)));
 
   let listChunkSize = 0;
   if (infoFields.length > 0) {
@@ -6118,6 +6965,17 @@ document.addEventListener('DOMContentLoaded', () => {
   if (overlay) overlay.addEventListener('click', e => { if (e.target === overlay) closeListTracks(); });
   // Initialise recording type to studio (syncs simple fields + advanced weights)
   setRecordingType('studio');
+
+  // Advanced mode: sensitivity change instantly re-selects from cache if available
+  const sensEl = document.getElementById('advSensitivity');
+  if (sensEl) sensEl.addEventListener('change', () => {
+    if (currentAlgo === 'advanced') reapplyAdvancedWeights();
+  });
+  // Structural param changes invalidate the cache (require full re-analysis)
+  ['advMinSilence', 'advMinTrack'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('change', () => { advancedSignalCache = null; });
+  });
 });
 
 </script>
