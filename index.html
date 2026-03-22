@@ -1171,6 +1171,8 @@
   :root.dark .track-field input,
   :root.dark .track-name input[type=text],
   :root.dark .track-meta-row input[type=text],
+  :root.dark input[type=password],
+  :root.dark #discogsToken,
   :root.dark select {
     background: #2d3048;
     color: var(--ink);
@@ -1644,18 +1646,37 @@
 
       <!-- Single combined metadata + search box -->
       <div style="background:rgba(145,243,223,0.03);border:1.5px solid var(--border);border-radius:10px;padding:0.9rem 1rem 0.8rem;margin-bottom:0.9rem">
+
+        <!-- Service selector tabs -->
+        <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.75rem;flex-wrap:wrap">
+          <div style="display:flex;gap:0;border:1.5px solid var(--border);border-radius:7px;overflow:hidden">
+            <button id="searchSvcMB"      onclick="setSearchService('mb')"      class="svc-tab active" title="MusicBrainz — free, open database; best for classical, jazz, mainstream">MusicBrainz</button>
+            <button id="searchSvcDiscogs" onclick="setSearchService('discogs')" class="svc-tab"        title="Discogs — broader vinyl/physical release coverage; requires free personal token">Discogs</button>
+          </div>
+          <!-- Discogs token field — shown only when Discogs is active -->
+          <div id="discogsTokenField" style="display:none;flex:1;min-width:180px;max-width:340px">
+            <div style="display:flex;align-items:center;gap:0.4rem">
+              <input type="password" id="discogsToken" placeholder="Discogs personal token"
+                style="font-family:'DM Mono',monospace;font-size:0.75rem;padding:0.38rem 0.65rem;border:1.5px solid var(--border);border-radius:6px;background:white;color:var(--ink);outline:none;width:100%"
+                onkeydown="if(event.key==='Enter')runSearch()">
+              <a href="https://www.discogs.com/settings/developers" target="_blank"
+                style="font-size:0.6rem;color:var(--amber);white-space:nowrap;flex-shrink:0">Get token ↗</a>
+            </div>
+          </div>
+        </div>
+
         <div class="controls-row" style="margin-top:0;flex-wrap:wrap">
           <div class="field" style="flex:2;min-width:130px">
             <label>Album Artist</label>
-            <input type="text" id="metaAlbumArtist" placeholder="Album artist" onkeydown="if(event.key==='Enter')searchMusicBrainz()">
+            <input type="text" id="metaAlbumArtist" placeholder="Album artist" onkeydown="if(event.key==='Enter')runSearch()">
           </div>
           <div class="field" style="flex:2;min-width:130px">
             <label>Artist</label>
-            <input type="text" id="metaArtist" placeholder="Artist" onkeydown="if(event.key==='Enter')searchMusicBrainz()">
+            <input type="text" id="metaArtist" placeholder="Artist" onkeydown="if(event.key==='Enter')runSearch()">
           </div>
           <div class="field" style="flex:3;min-width:160px">
             <label>Album</label>
-            <input type="text" id="metaAlbum" placeholder="Album title" onkeydown="if(event.key==='Enter')searchMusicBrainz()">
+            <input type="text" id="metaAlbum" placeholder="Album title" onkeydown="if(event.key==='Enter')runSearch()">
           </div>
         </div>
         <div class="controls-row" style="margin-top:0.5rem;flex-wrap:wrap;align-items:flex-end">
@@ -1668,12 +1689,12 @@
             <input type="text" id="metaGenre" placeholder="e.g. Reggae; Ska">
           </div>
           <div style="display:flex;gap:0.4rem;align-items:flex-end;flex-shrink:0;flex-wrap:wrap">
-            <button class="btn btn-primary" id="searchBtn" onclick="searchMusicBrainz()" style="white-space:nowrap"><span class="search-icon">🔎</span> Search MB</button>
+            <button class="btn btn-primary" id="searchBtn" onclick="runSearch()" style="white-space:nowrap"><span class="search-icon">🔎</span> Search</button>
             <button class="btn-bulk" onclick="applyBulkSmart()" title="Apply these metadata fields to all tracks in the Review panel" style="padding:0.6rem 0.9rem">→ Apply</button>
-            <button class="btn-bulk" id="btnEditEachTrack" onclick="toggleEditEachTrack()" style="background:#5a4a20;padding:0.6rem 0.9rem" title="Open per-track metadata editor for every track">🎤 Edit by Track</button>
+            <button class="btn-bulk" id="btnEditEachTrack" onclick="toggleEditEachTrack()" style="background:#5a4a20;padding:0.6rem 0.9rem;min-width:9rem;text-align:center" title="Open per-track metadata editor for every track">Edit by Track</button>
           </div>
         </div>
-        <div style="font-size:0.72rem;color:var(--groove);margin-top:0.55rem">Track titles from MusicBrainz appear in the Review card — edit them there. → Apply pushes these fields to all tracks.</div>
+        <div style="font-size:0.72rem;color:var(--groove);margin-top:0.55rem">Track titles appear in the Review card — edit them there. → Apply pushes these fields to all tracks.</div>
       </div>
 
       <!-- Hidden alias inputs — legacy JS reads artistInput / albumInput -->
@@ -1723,20 +1744,28 @@
     <div class="card-title"><span class="badge">4</span> Track Detection by Song Recognition <button class="btn btn-secondary" onclick="toggleRecogInstructions()" style="font-size:0.72rem;padding:0.3rem 0.75rem;margin-left:0.4rem">📋 Instructions</button></div>
     <div id="recogInstructions" style="display:none; margin-bottom:0.9rem; padding:0.9rem 1rem; background:rgba(145,243,223,0.05); border:1px solid var(--border); border-radius:8px; font-size:0.76rem; line-height:1.7; color:var(--groove)">
       <strong style="color:var(--ink); display:block; margin-bottom:0.5rem">How Song Recognition Works</strong>
-      <p style="margin:0 0 0.5rem">A short audio sample (~15 seconds) from the middle of each track is sent to the selected service. If the song is recognised, its title, artist, album and year are filled in automatically.</p>
-      <p style="margin:0 0 0.5rem"><strong>AudD</strong> — sign up for a free key at <a href="https://dashboard.audd.io/" target="_blank" style="color:var(--amber)">dashboard.audd.io ↗</a>.</p>
+      <p style="margin:0 0 0.5rem">A short audio sample from the middle of each track is fingerprinted or sent to the selected service. If the song is recognised, its title, artist, album and year are filled in automatically.</p>
       <p style="margin:0 0 0.5rem"><strong>Shazam via RapidAPI</strong> — sign up at <a href="https://rapidapi.com/apidojo/api/shazam" target="_blank" style="color:var(--amber)">RapidAPI ↗</a> and subscribe to the Shazam API. Uses an unofficial endpoint.</p>
+      <p style="margin:0 0 0.5rem"><strong>AcoustID</strong> — open, free fingerprinting service backed by MusicBrainz. Computes a Chromaprint fingerprint locally (~60 s of audio), submits to AcoustID, and looks up full metadata from MusicBrainz. Get a free API key at <a href="https://acoustid.org/login" target="_blank" style="color:var(--amber)">acoustid.org ↗</a>. Loads the Chromaprint.js library (~120 KB) from CDN on first use.</p>
+      <p style="margin:0 0 0.5rem"><strong>AudD</strong> — sign up for a free key at <a href="https://dashboard.audd.io/" target="_blank" style="color:var(--amber)">dashboard.audd.io ↗</a>.</p>
       <p style="margin:0">Your API key is never stored — it lives only in the page for the duration of your session. Use <strong>Identify All/Selected Untagged</strong> to process every untagged track, or tick checkboxes in the Review card to target specific tracks.</p>
     </div>
     <div style="display:flex; gap:0.6rem; flex-wrap:wrap; align-items:flex-start">
       <div style="display:flex; gap:0; border:1.5px solid var(--border); border-radius:6px; overflow:hidden; flex-shrink:0; align-self:flex-start; margin-top:1.4rem">
-        <button id="svcShazam" onclick="setRecogService('shazam')" class="svc-tab active" title="Shazam via RapidAPI — unofficial but widely used">Shazam</button>
-        <button id="svcAudd"   onclick="setRecogService('audd')"   class="svc-tab"        title="AudD — free API key at dashboard.audd.io">AudD</button>
+        <button id="svcShazam"   onclick="setRecogService('shazam')"   class="svc-tab active" title="Shazam via RapidAPI — unofficial but widely used">Shazam</button>
+        <button id="svcAcoustId" onclick="setRecogService('acoustid')" class="svc-tab"        title="AcoustID — open fingerprinting, backed by MusicBrainz">AcoustID</button>
+        <button id="svcAudd"     onclick="setRecogService('audd')"     class="svc-tab"        title="AudD — free API key at dashboard.audd.io">AudD</button>
       </div>
       <div id="shazamKeyField" style="flex:2; min-width:180px">
         <div class="field">
           <label>RapidAPI Key <a href="https://rapidapi.com/apidojo/api/shazam" target="_blank" style="color:var(--amber);font-size:0.6rem">Get key ↗</a></label>
           <input type="password" id="shazamKey" placeholder="Your RapidAPI key" style="font-size:0.75rem">
+        </div>
+      </div>
+      <div id="acoustidKeyField" style="display:none; flex:2; min-width:180px">
+        <div class="field">
+          <label>AcoustID API Key <a href="https://acoustid.org/login" target="_blank" style="color:var(--amber);font-size:0.6rem">Get free key ↗</a></label>
+          <input type="password" id="acoustidKey" placeholder="Your AcoustID API key" style="font-size:0.75rem">
         </div>
       </div>
       <div id="auddKeyField" style="display:none; flex:2; min-width:180px">
@@ -1755,11 +1784,12 @@
     <div style="margin-top:1rem;padding-top:0.9rem;border-top:1px solid var(--border)">
       <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap">
         <div style="flex:1;min-width:0">
-          <div style="font-family:'DM Mono',monospace;font-size:0.72rem;font-weight:600;color:var(--groove);margin-bottom:0.25rem">Detect &amp; Apply BPM to Track Metadata</div>
-          <div style="font-size:0.68rem;color:var(--wax);line-height:1.55">Uses Essentia.js (RhythmExtractor2013) — more accurate than the detection algorithm estimate. Loads ~220 KB from CDN on first use. BPM is written to each track's metadata and editable in the Review panel.</div>
+          <div style="font-family:'DM Mono',monospace;font-size:0.72rem;font-weight:600;color:var(--ink);margin-bottom:0.25rem">Detect &amp; Apply BPM to Track Metadata</div>
+          <div style="font-size:0.68rem;color:var(--groove);line-height:1.55">Uses Essentia.js (RhythmExtractor2013) — more accurate than the detection algorithm estimate. Loads ~220 KB from CDN on first use. BPM is written to each track's metadata and editable in the Review panel.</div>
+          <div style="font-size:0.67rem;color:var(--groove);margin-top:0.3rem">⚠ Takes approximately 30 sec. to 2 min. depending on recording length.</div>
         </div>
         <button id="essentiaBpmApplyBtn" onclick="applyEssentiaBpmToTracks()"
-          style="font-family:'DM Mono',monospace;font-size:0.72rem;letter-spacing:0.04em;padding:0.45rem 1rem;border:1.5px solid var(--border);border-radius:6px;background:rgba(145,243,223,0.07);color:var(--groove);cursor:pointer;white-space:nowrap;flex-shrink:0;transition:all 0.15s">
+          style="font-family:'DM Mono',monospace;font-size:0.72rem;letter-spacing:0.04em;padding:0.45rem 1rem;border:1.5px solid var(--border);border-radius:6px;background:rgba(145,243,223,0.07);color:var(--ink);cursor:pointer;white-space:nowrap;flex-shrink:0;transition:all 0.15s">
           ♩ Detect &amp; Apply BPM
         </button>
       </div>
@@ -1868,6 +1898,10 @@ let trackSegments = []; // [{start, end, title, confidence, isNearMiss, ...}]
 let selectedRelease = null;
 let exportFormat = 'ffmpeg';
 let originalFile = null;
+// Stores the full ordered track list from the last MB/Discogs selection so that
+// newly-added splits automatically receive the correct title and metadata.
+// Each entry: { title, trackArtist, knownDurationSec }
+let pendingReleaseTracks = [];
 let startTrackNum = 1; // offset for Side B / multi-disc support
 
 function setStartTrackNum(val) {
@@ -2041,7 +2075,8 @@ function fullReset() {
   splitConfidence  = {};
   nearMissPoints   = [];
   trackSegments    = [];
-  selectedRelease  = null;
+  selectedRelease      = null;
+  pendingReleaseTracks = [];
   originalFile     = null;
   startTrackNum    = 1;
 
@@ -2081,6 +2116,9 @@ function fullReset() {
   // Reset Essentia BPM button state
   const essBtn = document.getElementById('essentiaBpmApplyBtn');
   if (essBtn) { essBtn.textContent = '♩ Detect & Apply BPM'; essBtn.disabled = false; essBtn.style.borderColor = ''; essBtn.style.color = ''; }
+  // Reset AcoustID/Chromaprint error state so a CDN failure doesn't block the next file
+  _cpError = null;
+  // Leave _cpInstance intact — the WASM module can be reused across files
 
   // Reset Start Track # input
   const stnInput = document.getElementById('startTrackNum');
@@ -2154,7 +2192,7 @@ function fullReset() {
 
 // ── File Load ──────────────────────────────────────────────────────────────
 let waveformEventsInitialised = false; // guard against duplicate listeners
-let lastUserZoomMs = 0; // suppresses playhead auto-scroll for 2s after a zoom gesture
+let lastUserZoomMs = 0; // retained for compatibility — auto-scroll removed
 const fileInput = document.getElementById('fileInput');
 const dropZone  = document.getElementById('dropZone');
 
@@ -2838,12 +2876,9 @@ function initWaveformEvents() {
   waveformEventsInitialised = true;
   const canvas = document.getElementById('waveformCanvas');
 
-  // Scroll to zoom, centred on cursor — always zooms to the mouse position,
-  // even while the file is playing.  After a zoom gesture, playhead auto-scroll
-  // is suppressed for 2 s so the user can inspect the region they zoomed into.
+  // Scroll to zoom, centred on cursor — always zooms to the mouse position.
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
-    lastUserZoomMs = Date.now();
     const rect  = canvas.getBoundingClientRect();
     const mouseF = viewStart + ((e.clientX - rect.left) / rect.width) * (viewEnd - viewStart);
     const factor = e.deltaY < 0 ? 1.35 : (1 / 1.35);
@@ -3378,6 +3413,14 @@ fullReset = function (...args) {
   sgNFrames = 0;
   sgNBins   = 0;
   sgBusy    = false;
+  // Close the spectrogram panel if it was open
+  if (sgVisible) {
+    sgVisible = false;
+    const wrap = document.getElementById('spectrogramWrap');
+    const btn  = document.getElementById('btnSpectrogram');
+    if (wrap) wrap.style.display = 'none';
+    if (btn)  { btn.style.borderColor = ''; btn.style.color = ''; }
+  }
   const loading = document.getElementById('spectrogramLoading');
   if (loading) loading.classList.remove('active');
 };
@@ -3699,7 +3742,11 @@ async function _detectTracksOnce(threshold, minSilSec, minTrkSec) {
         // Record ALL silences — we'll decide what to do with marginal ones below
         // Only capture near-misses that are at least 40% of minSilSamples (avoid tiny blips)
         if (dur >= minSilSamples * 0.4) {
-          allSilences.push({ mid: silStart + (silEnd - silStart) * 0.8, durationSamples: dur, meetsMin: dur >= minSilSamples });
+          // Find the quietest window within this silence region for the most precise cut
+          const silStartW = Math.floor(silStart / windowSize);
+          const silEndW   = Math.min(w, numWindows);
+          const deepW     = deepestSilenceIdx(rms, silStartW, silEndW);
+          allSilences.push({ mid: deepW * windowSize, durationSamples: dur, meetsMin: dur >= minSilSamples });
         }
         inSilence = false;
       }
@@ -3707,7 +3754,11 @@ async function _detectTracksOnce(threshold, minSilSec, minTrkSec) {
   }
   if (inSilence) {
     const dur = data.length - silStart;
-    if (dur >= minSilSamples * 0.4) allSilences.push({ mid: silStart + (data.length - silStart) * 0.8, durationSamples: dur, meetsMin: dur >= minSilSamples });
+    if (dur >= minSilSamples * 0.4) {
+      const silStartW = Math.floor(silStart / windowSize);
+      const deepW     = deepestSilenceIdx(rms, silStartW, numWindows);
+      allSilences.push({ mid: deepW * windowSize, durationSamples: dur, meetsMin: dur >= minSilSamples });
+    }
   }
 
   // Separate into confirmed candidates and near-misses
@@ -3999,7 +4050,8 @@ async function _detectTracksAdvancedOnce(scoreThresholdVal) {
     if (!q && runStart >= 0) {
       const runLen = f - runStart;
       if (runLen >= minSilFrames) {
-        const midFrame = runStart + Math.floor(runLen * 0.8);
+        // Place the split at the quietest frame within the run
+        const midFrame = deepestSilenceIdx(rmsSmooth, runStart, f);
         quietRuns.push({ start: runStart, end: f, midFrame, durationSec: runLen * hopSec });
       }
       runStart = -1;
@@ -4765,6 +4817,27 @@ function _advSelectFromCache(scoreThresholdVal) {
 }
 
 
+// ── Split-point placement helper ───────────────────────────────────────────
+// Rather than always placing the split at a fixed 80% through a quiet region,
+// find the single frame/sample within the region that has the lowest RMS value.
+// This anchors the split at the actual floor of the silence — the quietest
+// moment — which is the most stable and natural cut point.
+// For very short silences (<= 5 frames / samples) just use the centre.
+//
+// rmsArr : Float32Array of RMS values
+// loIdx  : inclusive start index in rmsArr
+// hiIdx  : exclusive end index in rmsArr
+// returns: integer index of the minimum-RMS frame within [loIdx, hiIdx)
+function deepestSilenceIdx(rmsArr, loIdx, hiIdx) {
+  const len = hiIdx - loIdx;
+  if (len <= 5) return loIdx + Math.floor(len / 2);
+  let minVal = Infinity, minIdx = loIdx + Math.floor(len / 2);
+  for (let i = loIdx; i < hiIdx; i++) {
+    if (rmsArr[i] < minVal) { minVal = rmsArr[i]; minIdx = i; }
+  }
+  return minIdx;
+}
+
 // ── DSP Helpers ────────────────────────────────────────────────────────────
 
 // In-place iterative real-valued FFT (Cooley-Tukey), returns magnitude array
@@ -5024,7 +5097,6 @@ function rebuildSegments() {
 
   for (let i = 0; i < pts.length - 1; i++) {
     const prev = old[i] || {};
-    // Look up confidence for the split that starts this segment (splitPoints[i-1])
     const splitTime = pts[i];
     const confKey   = splitTime.toFixed(4);
     const conf = i === 0 ? 1 : (splitConfidence[confKey] !== undefined ? splitConfidence[confKey] : 1);
@@ -5035,18 +5107,17 @@ function rebuildSegments() {
       trackArtist:      prev.trackArtist      || '',
       trackAlbum:       prev.trackAlbum       || '',
       trackYear:        prev.trackYear        || '',
+      trackGenre:       prev.trackGenre       || '',
       splitApproved:    prev.splitApproved,
       knownDurationSec: prev.knownDurationSec || null,
-      confidence: i === 0 ? null : conf, // null for first track (no split before it)
+      confidence: i === 0 ? null : conf,
       isNearMiss: false,
     });
   }
 
-  // Insert near-miss pseudo-segments into the sorted list
-  // A near-miss appears as a track entry at its position, flagged for review
+  // Insert near-miss pseudo-segments
   const combined = realSegments.slice();
   for (const nm of nearMissPoints) {
-    // Find which real segment this near-miss falls inside
     const parentIdx = combined.findIndex(s => !s.isNearMiss && nm.time > s.start && nm.time < s.end);
     if (parentIdx === -1) continue;
     combined.splice(parentIdx + 1, 0, {
@@ -5054,7 +5125,7 @@ function rebuildSegments() {
       end:   combined[parentIdx].end,
       title: `(Near-miss at ${fmtTime(nm.time)})`,
       trackArtist: '', trackAlbum: '', trackYear: '',
-      splitApproved: false, // pre-rejected
+      splitApproved: false,
       confidence: null,
       isNearMiss: true,
       nearMissReason: nm.reason,
@@ -5063,6 +5134,33 @@ function rebuildSegments() {
   }
 
   trackSegments = combined;
+
+  // Re-apply pending release track data to any segment that still has a default title
+  // or that is newly added beyond the previously matched range.
+  _applyPendingTracksToSegments();
+}
+
+// Apply pendingReleaseTracks data to real segments that are missing proper metadata.
+// "Missing" means: title is default ("Track N"), or trackArtist/Album/Year are blank.
+// This runs after every rebuildSegments() so newly-added splits pick up the right names.
+function _applyPendingTracksToSegments() {
+  if (!pendingReleaseTracks.length) return;
+  const realSegs = trackSegments.filter(s => !s.isNearMiss);
+  const mbOffset = Math.max(0, startTrackNum - 1);
+  realSegs.forEach((seg, i) => {
+    const entry = pendingReleaseTracks[mbOffset + i];
+    if (!entry) return;
+    // Only fill title if it still looks like a default ("Track 3")
+    if (!seg.title || seg.title.match(/^Track \d+$/)) {
+      seg.title = entry.title || seg.title;
+    }
+    // Fill metadata fields only if they're blank (don't clobber user edits)
+    if (!seg.trackArtist && entry.trackArtist) seg.trackArtist = entry.trackArtist;
+    if (!seg.trackAlbum  && entry.trackAlbum)  seg.trackAlbum  = entry.trackAlbum;
+    if (!seg.trackYear   && entry.trackYear)   seg.trackYear   = entry.trackYear;
+    if (!seg.trackGenre  && entry.trackGenre)  seg.trackGenre  = entry.trackGenre;
+    if (!seg.knownDurationSec && entry.knownDurationSec) seg.knownDurationSec = entry.knownDurationSec;
+  });
 }
 
 function confClass(conf) {
@@ -5185,6 +5283,7 @@ function renderTrackList() {
     container.appendChild(wrap);
   });
   setStep(3);
+  _syncEditTrackBtn();
 }
 
 function esc(s) { return (s||'').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
@@ -5196,14 +5295,68 @@ function toggleTrackMeta(i) {
 
 let editEachTrackOn = false;
 
-function toggleEditEachTrack() {
-  editEachTrackOn = !editEachTrackOn;
+// Returns true when every real non-near-miss segment has at least one metadata field set,
+// which is the state after a MB/Discogs selection has pushed global data to all tracks.
+function _allTracksHaveMetadata() {
+  const realSegs = trackSegments.filter(s => !s.isNearMiss);
+  return realSegs.length > 0 && realSegs.every(
+    s => !!(s.trackArtist || s.trackAlbum || s.trackYear || s.trackGenre || s.trackBpm)
+  );
+}
+
+// Update the Edit by Track button label to reflect current state.
+// Called after any action that might change whether all tracks have metadata.
+function _syncEditTrackBtn() {
   const btn = document.getElementById('btnEditEachTrack');
-  if (btn) {
-    btn.style.background = editEachTrackOn ? 'var(--amber)' : '#5a4a20';
-    btn.textContent = editEachTrackOn ? '🎤 Edit by Track ✓' : '🎤 Edit by Track';
+  if (!btn) return;
+  if (_allTracksHaveMetadata()) {
+    btn.textContent      = '✕ Clear All Data';
+    btn.style.background = '#6b1a1a';
+    btn.style.minWidth   = '9rem';
+    btn.title            = 'Clear all per-track metadata and track titles';
+  } else if (editEachTrackOn) {
+    btn.textContent      = 'Edit by Track ✓';
+    btn.style.background = 'var(--amber)';
+    btn.style.minWidth   = '9rem';
+    btn.title            = 'Click to collapse per-track editors';
+  } else {
+    btn.textContent      = 'Edit by Track';
+    btn.style.background = '#5a4a20';
+    btn.style.minWidth   = '9rem';
+    btn.title            = 'Open per-track metadata editor for every track';
+  }
+}
+
+function toggleEditEachTrack() {
+  // If all tracks have metadata, act as "Clear All Data"
+  if (_allTracksHaveMetadata()) {
+    // Clear all per-track metadata and the pending release tracklist
+    const realSegsForClear = trackSegments.filter(s => !s.isNearMiss);
+    realSegsForClear.forEach((seg, i) => {
+      seg.title       = `Track ${i + startTrackNum}`;
+      seg.trackArtist = '';
+      seg.trackAlbum  = '';
+      seg.trackYear   = '';
+      seg.trackGenre  = '';
+      seg.trackBpm    = null;
+      seg.knownDurationSec = null;
+    });
+    pendingReleaseTracks = [];
+    // Keep drawers open — user stays in edit mode
+    editEachTrackOn = true;
+    renderTrackList();
+    // Force all drawers open (renderTrackList closes them since hasOverride is now false)
+    trackSegments.forEach((seg, i) => {
+      if (seg.isNearMiss) return;
+      const row = document.getElementById(`meta-row-${i}`);
+      if (row) row.classList.add('open');
+    });
+    _syncEditTrackBtn();
+    return;
   }
 
+  // Normal toggle behaviour
+  editEachTrackOn = !editEachTrackOn;
   trackSegments.forEach((seg, i) => {
     if (seg.isNearMiss) return;
     const row = document.getElementById(`meta-row-${i}`);
@@ -5211,15 +5364,16 @@ function toggleEditEachTrack() {
     if (editEachTrackOn) {
       row.classList.add('open');
     } else {
-      // Only close rows where no data was entered
-      const hasData = !!(seg.trackArtist || seg.trackAlbum || seg.trackYear);
+      const hasData = !!(seg.trackArtist || seg.trackAlbum || seg.trackYear || seg.trackGenre || seg.trackBpm);
       if (!hasData) row.classList.remove('open');
     }
   });
+  _syncEditTrackBtn();
 }
 
 function setTrackMeta(i, key, val) {
-  trackSegments[i][key] = val.trim();
+  trackSegments[i][key] = typeof val === 'string' ? val.trim() : val;
+  _syncEditTrackBtn();
 }
 
 function copyTrackMetaDown(fromIndex) {
@@ -5267,6 +5421,7 @@ function applyBulkSmart() {
     if (genre)  seg.trackGenre  = genre;
   });
   renderTrackList();
+  _syncEditTrackBtn();
 }
 
 function applyBulkMeta() { applyBulkSmart(); }
@@ -5379,14 +5534,251 @@ function addManualSplit() {
 }
 
 // ── Song Recognition ───────────────────────────────────────────────────────
-let recogService = 'shazam'; // 'shazam' | 'audd'
+let recogService = 'shazam'; // 'shazam' | 'acoustid' | 'audd'
 
 function setRecogService(svc) {
   recogService = svc;
-  document.getElementById('svcAudd').classList.toggle('active',   svc === 'audd');
-  document.getElementById('svcShazam').classList.toggle('active', svc === 'shazam');
-  document.getElementById('auddKeyField').style.display   = svc === 'audd'    ? 'block' : 'none';
-  document.getElementById('shazamKeyField').style.display = svc === 'shazam'  ? 'block' : 'none';
+  document.getElementById('svcAudd').classList.toggle('active',     svc === 'audd');
+  document.getElementById('svcShazam').classList.toggle('active',   svc === 'shazam');
+  document.getElementById('svcAcoustId').classList.toggle('active', svc === 'acoustid');
+  document.getElementById('auddKeyField').style.display     = svc === 'audd'     ? 'block' : 'none';
+  document.getElementById('shazamKeyField').style.display   = svc === 'shazam'   ? 'block' : 'none';
+  document.getElementById('acoustidKeyField').style.display = svc === 'acoustid' ? 'block' : 'none';
+}
+
+// ── AcoustID / Chromaprint fingerprinting ──────────────────────────────────
+// AcoustID is an open audio fingerprinting service backed by MusicBrainz.
+// It works by:
+//  1. Computing a Chromaprint fingerprint from ~60s of mono audio at 11 025 Hz
+//  2. Submitting the fingerprint + duration to api.acoustid.org
+//  3. Getting back MusicBrainz Recording IDs (MBIDs)
+//  4. Looking up the best MBID on MusicBrainz for full title/artist/album/year
+//
+// Chromaprint.js (WASM build, ~120 KB) is lazy-loaded from CDN on first use.
+// Free API key: https://acoustid.org/login
+
+let _cpInstance = null;   // Chromaprint instance once loaded
+let _cpLoading  = false;
+let _cpError    = null;
+
+async function _loadChromaprint() {
+  if (_cpInstance) return _cpInstance;
+  if (_cpError)    throw new Error(_cpError);
+  if (_cpLoading) {
+    while (_cpLoading) await new Promise(r => setTimeout(r, 80));
+    if (_cpError) throw new Error(_cpError);
+    return _cpInstance;
+  }
+  _cpLoading = true;
+  // Try multiple CDN sources in order
+  const urls = [
+    'https://cdn.jsdelivr.net/npm/chromaprint.js/dist/chromaprint.js',
+    'https://unpkg.com/chromaprint.js/dist/chromaprint.js',
+    'https://cdn.jsdelivr.net/npm/chromaprint.js@latest/dist/chromaprint.js',
+  ];
+  let lastErr = null;
+  for (const url of urls) {
+    try {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src     = url;
+        s.onload  = resolve;
+        s.onerror = () => reject(new Error(`CDN load failed: ${url}`));
+        document.head.appendChild(s);
+      });
+      // Try all plausible global names the UMD build might register
+      const Cls = globalThis.Chromaprint
+               || globalThis.chromaprint
+               || (globalThis.Chromaprint && globalThis.Chromaprint.default);
+      if (!Cls) throw new Error('Chromaprint global not found after script load');
+      // Some builds are WASM factories that need async init — detect and call if needed
+      let instance;
+      if (typeof Cls === 'function' && Cls.prototype && typeof Cls.prototype.start === 'function') {
+        // Looks like a constructor — call directly
+        instance = new Cls();
+        // If it exposes an init() method, await it (WASM async init)
+        if (typeof instance.init === 'function') await instance.init();
+      } else if (typeof Cls === 'function') {
+        // Might be a factory / async init function
+        instance = await Cls();
+        if (instance && typeof instance.init === 'function') await instance.init();
+      } else if (typeof Cls === 'object' && typeof Cls.start === 'function') {
+        // Already an instance
+        instance = Cls;
+      } else {
+        throw new Error('Unrecognised Chromaprint export shape');
+      }
+      // Sanity-check: verify the instance has the expected API
+      if (typeof instance.start !== 'function' || typeof instance.finish !== 'function') {
+        throw new Error('Chromaprint instance missing start/finish methods');
+      }
+      _cpInstance = instance;
+      console.log('[Chromaprint] loaded OK from', url);
+      return _cpInstance;
+    } catch(e) {
+      console.warn('[Chromaprint] failed to load from', url, '—', e.message);
+      lastErr = e;
+    }
+  }
+  _cpError = `Could not load Chromaprint.js from any CDN. Last error: ${lastErr?.message}. ` +
+             `AcoustID requires this library — check your internet connection, or use Shazam/AudD instead.`;
+  throw new Error(_cpError);
+}
+
+// Compute a Chromaprint fingerprint for a segment of the audioBuffer.
+// Returns { fingerprint (string), duration (integer seconds) }
+async function _computeChromaprint(startSec, endSec) {
+  const cp = await _loadChromaprint();
+
+  const srcSr     = audioBuffer.sampleRate;
+  const TARGET_SR = 11025;   // Chromaprint's native sample rate
+  // Use up to 120 s — longer samples improve match reliability for vinyl rips
+  const capSec    = Math.min(endSec - startSec, 120);
+  const from      = Math.floor(startSec * srcSr);
+  const to        = Math.min(Math.floor((startSec + capSec) * srcSr), audioBuffer.length);
+  const srcLen    = to - from;
+
+  if (srcLen < srcSr * 5) throw new Error('Track segment too short for fingerprinting (need ≥ 5 s)');
+
+  // Mix to mono
+  const nCh  = audioBuffer.numberOfChannels;
+  const mono = new Float32Array(srcLen);
+  for (let ch = 0; ch < nCh; ch++) {
+    const chData = audioBuffer.getChannelData(ch);
+    for (let i = 0; i < srcLen; i++) mono[i] += chData[from + i];
+  }
+  if (nCh > 1) for (let i = 0; i < srcLen; i++) mono[i] /= nCh;
+
+  // Resample to 11025 Hz (linear interpolation)
+  const ratio  = srcSr / TARGET_SR;
+  const outLen = Math.floor(srcLen / ratio);
+  const s16    = new Int16Array(outLen);
+  for (let j = 0; j < outLen; j++) {
+    const src = j * ratio;
+    const lo  = Math.floor(src);
+    const hi  = Math.min(lo + 1, srcLen - 1);
+    const t   = src - lo;
+    const v   = mono[lo] * (1 - t) + mono[hi] * t;
+    s16[j] = Math.round(Math.max(-1, Math.min(1, v)) * 32767);
+  }
+
+  // Feed audio to Chromaprint — re-initialise each time to avoid state bleed
+  // Some builds reuse state; call start() fresh each time
+  cp.start(TARGET_SR, 1);
+  cp.feed(s16);
+  cp.finish();
+
+  // getFingerprint() may return a string or {fingerprint, duration} object
+  const raw = cp.getFingerprint();
+  let fingerprint;
+  if (typeof raw === 'string') {
+    fingerprint = raw;
+  } else if (raw && typeof raw === 'object' && raw.fingerprint) {
+    fingerprint = raw.fingerprint;
+  } else {
+    throw new Error('Chromaprint.getFingerprint() returned unexpected value: ' + JSON.stringify(raw));
+  }
+
+  if (!fingerprint || fingerprint.length < 10) {
+    throw new Error('Chromaprint returned an empty or invalid fingerprint');
+  }
+
+  const duration = Math.round(capSec);
+  console.log(`[Chromaprint] fingerprint length=${fingerprint.length} duration=${duration}s`);
+  return { fingerprint, duration };
+}
+
+async function recogniseAcoustId(startSec, endSec) {
+  const apiKey = (document.getElementById('acoustidKey')?.value || '').trim();
+  if (!apiKey) throw new Error('Enter your AcoustID API key first — get a free one at acoustid.org/login');
+
+  // Compute fingerprint
+  const { fingerprint, duration } = await _computeChromaprint(startSec, endSec);
+
+  // Submit to AcoustID
+  // duration must be an integer string — some API versions reject floats
+  const params = new URLSearchParams();
+  params.append('client',      apiKey);
+  params.append('meta',        'recordings+releases+tracks');
+  params.append('duration',    String(duration));
+  params.append('fingerprint', fingerprint);
+
+  const res = await fetch('https://api.acoustid.org/v2/lookup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: params.toString(),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    if (res.status === 400) throw new Error(`AcoustID bad request — fingerprint may be malformed. Detail: ${text.slice(0,120)}`);
+    if (res.status === 403) throw new Error('AcoustID API key rejected (403). Verify your key at acoustid.org.');
+    throw new Error(`AcoustID HTTP ${res.status}: ${text.slice(0,120)}`);
+  }
+
+  const json = await res.json();
+  console.log('[AcoustID response]', JSON.stringify(json).slice(0, 800));
+
+  if (json.status !== 'ok') {
+    const errMsg = json.error?.message || JSON.stringify(json);
+    throw new Error(`AcoustID error: ${errMsg}`);
+  }
+
+  const results = json.results || [];
+  if (!results.length) return null;
+
+  // Sort by score descending — accept anything >= 0.25 (vinyl rips can score lower)
+  const sorted = results.slice().sort((a, b) => (b.score || 0) - (a.score || 0));
+  const best   = sorted[0];
+  console.log(`[AcoustID] best score=${best.score}, recordings=${(best.recordings||[]).length}`);
+
+  if ((best.score || 0) < 0.25) {
+    console.log('[AcoustID] score too low — no match returned');
+    return null;
+  }
+
+  const recordings = best.recordings || [];
+  if (!recordings.length) return null;
+
+  // Prefer recordings with the most releases attached (more likely to be a well-known version)
+  const rec = recordings
+    .slice()
+    .sort((a, b) => (b.releases?.length || 0) - (a.releases?.length || 0))[0];
+
+  const title  = rec.title || '';
+  const artist = (rec.artists || []).map(a => a.name).join(', ');
+  let album = '', year = '', knownDurationSec = null;
+  if (rec.duration) knownDurationSec = rec.duration;
+
+  // Check if releases came back inline (depends on meta parameter)
+  const inlineReleases = rec.releases || [];
+  if (inlineReleases.length) {
+    const rel = inlineReleases[0];
+    album = rel.title || '';
+    if (rel.date) year = rel.date.year ? String(rel.date.year) : (rel.date || '').substring(0, 4);
+  }
+
+  // Enrich with album/year from MusicBrainz if not already present
+  if (rec.id && (!album || !year)) {
+    try {
+      const mbUrl  = `https://musicbrainz.org/ws/2/recording/${rec.id}?inc=releases&fmt=json`;
+      const mbRes  = await fetch(mbUrl, { headers: { 'User-Agent': 'VinylSplitter/1.0 (browser-tool)' } });
+      if (mbRes.ok) {
+        const mbData = await mbRes.json();
+        if (!knownDurationSec && mbData.length) knownDurationSec = mbData.length / 1000;
+        const releases = mbData.releases || [];
+        if (releases.length) {
+          const rel = releases[0];
+          if (!album) album = rel.title || '';
+          if (!year && rel.date) year = rel.date.substring(0, 4);
+        }
+      }
+    } catch(e) {
+      console.warn('[AcoustID MB enrichment]', e.message); // non-fatal
+    }
+  }
+
+  return { title, artist, album, year, knownDurationSec };
 }
 
 // Build a 16-bit mono WAV blob from a slice of the audioBuffer
@@ -5570,25 +5962,32 @@ async function identifyTrack(i) {
   if (!seg || seg.isNearMiss) return;
 
   try {
-    // Sample from 10s into the track (skip any intro) up to 16s later.
-    // Falls back to the start if the track is very short.
-    const trackLen = seg.end - seg.start;
-    const offset   = Math.min(10, trackLen * 0.15);
+    const trackLen    = seg.end - seg.start;
+    const offset      = recogService === 'acoustid'
+      ? Math.min(20, trackLen * 0.20)   // AcoustID: skip deeper to clear intros and bad split edges
+      : Math.min(10, trackLen * 0.15);  // Shazam/AudD: shorter sample, less offset needed
     const sampleStart = seg.start + offset;
-    const sampleEnd   = Math.min(seg.end, sampleStart + 8);
-    const wavBlob = sliceToWav(sampleStart, sampleEnd);
-    console.log(`[identify ${i}] sampling ${fmtTime(sampleStart)}–${fmtTime(sampleEnd)}, blob ${wavBlob.size} bytes`);
+    const sampleEnd   = seg.end;   // AcoustID uses full segment; WAV services cap internally
 
-    const meta    = recogService === 'shazam'
-      ? await recogniseShazam(wavBlob)
-      : await recogniseAudd(wavBlob);
+    let meta;
+    if (recogService === 'acoustid') {
+      // AcoustID computes fingerprint from the audio buffer directly
+      meta = await recogniseAcoustId(sampleStart, sampleEnd);
+    } else {
+      // Shazam / AudD use a short WAV blob
+      const wavBlob = sliceToWav(sampleStart, Math.min(seg.end, sampleStart + 8));
+      console.log(`[identify ${i}] sampling ${fmtTime(sampleStart)}–${fmtTime(Math.min(seg.end, sampleStart + 8))}, blob ${wavBlob.size} bytes`);
+      meta = recogService === 'shazam'
+        ? await recogniseShazam(wavBlob)
+        : await recogniseAudd(wavBlob);
+    }
 
     if (meta && (meta.title || meta.artist)) {
-      if (meta.title)              trackSegments[i].title            = meta.title;
-      if (meta.artist)             trackSegments[i].trackArtist      = meta.artist;
-      if (meta.album)              trackSegments[i].trackAlbum       = meta.album;
-      if (meta.year)               trackSegments[i].trackYear        = meta.year;
-      if (meta.knownDurationSec)   trackSegments[i].knownDurationSec = meta.knownDurationSec;
+      if (meta.title)            trackSegments[i].title            = meta.title;
+      if (meta.artist)           trackSegments[i].trackArtist      = meta.artist;
+      if (meta.album)            trackSegments[i].trackAlbum       = meta.album;
+      if (meta.year)             trackSegments[i].trackYear        = meta.year;
+      if (meta.knownDurationSec) trackSegments[i].knownDurationSec = meta.knownDurationSec;
       renderTrackList();
       return true;
     }
@@ -5660,7 +6059,7 @@ function syncBulkToSearch() {
 // bulkSearch now just delegates to the unified search in the metadata box
 async function bulkSearch() {
   syncBulkToSearch();
-  await searchMusicBrainz();
+  await runSearch();
 }
 
 function showBulkSearchStatus(type, msg) {
@@ -5734,32 +6133,47 @@ async function selectBulkRelease(rel, el) {
     const res  = await fetch(url, { headers: { 'User-Agent': 'VinylSplitter/1.0 (browser-tool)' } });
     const data = await res.json();
 
-    const artistName = data['artist-credit'] ? data['artist-credit'].map(a=>a.name||a.artist?.name||'').join(', ') : '';
+    const artistName = _mbArtistFromCredit(data['artist-credit']) || '';
+    const albumName  = data.title || '';
     const year   = data.date ? data.date.substring(0,4) : '';
-    const genres = data.genres && data.genres.length ? data.genres[0].name : '';
+    const genres = data.genres && data.genres.length ? data.genres.map(g=>g.name).join('; ') : '';
 
     document.getElementById('bulkArtist').value  = artistName;
-    document.getElementById('bulkAlbum').value   = data.title || '';
+    document.getElementById('bulkAlbum').value   = albumName;
     const _byEl = document.getElementById('bulkYear');  if (_byEl) _byEl.value = year;
     const _bgEl = document.getElementById('bulkGenre'); if (_bgEl) _bgEl.value = genres;
-    document.getElementById('artistInput').value = artistName;
-    document.getElementById('albumInput').value  = data.title || '';
+    document.getElementById('artistInput').value     = artistName;
+    document.getElementById('albumInput').value      = albumName;
     document.getElementById('metaAlbumArtist').value = artistName;
-    document.getElementById('metaArtist').value  = artistName;
-    document.getElementById('metaAlbum').value   = data.title || '';
-    document.getElementById('metaYear').value    = year;
-    document.getElementById('metaGenre').value   = genres;
+    document.getElementById('metaArtist').value      = artistName;
+    document.getElementById('metaAlbum').value       = albumName;
+    document.getElementById('metaYear').value        = year;
+    document.getElementById('metaGenre').value       = genres;
+
+    // Push global fields to all tracks as fallback
+    _pushGlobalMetaToTracks({ artist: artistName, album: albumName, year, genre: genres });
 
     if (data.media && data.media.length) {
       const allTracks = data.media.flatMap(m => m.tracks || []);
+      // Store full release tracklist so future splits auto-name correctly
+      pendingReleaseTracks = allTracks.map(t => ({
+        title:            t.title || '',
+        trackArtist:      (() => { const ta = _mbArtistFromCredit(t['artist-credit']); return (ta && ta !== artistName) ? ta : artistName; })(),
+        trackAlbum:       albumName,
+        trackYear:        year,
+        trackGenre:       genres,
+        knownDurationSec: t.length ? t.length / 1000 : (t.recording?.length ? t.recording.length / 1000 : null),
+      }));
       const mbOffset  = Math.max(0, startTrackNum - 1);
       const realSegs  = trackSegments.filter(s => !s.isNearMiss);
       realSegs.forEach((seg, i) => {
         const mbTrack = allTracks[mbOffset + i];
         if (!mbTrack) return;
         if (mbTrack.title) seg.title = mbTrack.title;
+        const trackArtist = _mbArtistFromCredit(mbTrack['artist-credit']);
+        if (trackArtist && trackArtist !== artistName) seg.trackArtist = trackArtist;
         if (mbTrack.length) seg.knownDurationSec = mbTrack.length / 1000;
-        else if (mbTrack.recording && mbTrack.recording.length) seg.knownDurationSec = mbTrack.recording.length / 1000;
+        else if (mbTrack.recording?.length) seg.knownDurationSec = mbTrack.recording.length / 1000;
       });
       if (trackSegments.length > 0) renderTrackList();
     }
@@ -5855,6 +6269,337 @@ async function _guessFromTrack() {
   return { artist: best.artist, album: best.album, releases: best.releases };
 }
 
+// ── Search service selector ─────────────────────────────────────────────────
+let currentSearchService = 'mb'; // 'mb' | 'discogs'
+
+function setSearchService(svc) {
+  currentSearchService = svc;
+  document.getElementById('searchSvcMB').classList.toggle('active',      svc === 'mb');
+  document.getElementById('searchSvcDiscogs').classList.toggle('active', svc === 'discogs');
+  document.getElementById('discogsTokenField').style.display = svc === 'discogs' ? 'flex' : 'none';
+  // Clear previous results when switching
+  document.getElementById('searchResults').innerHTML = '';
+  const ss = document.getElementById('searchStatus');
+  if (ss) { ss.className = 'status'; ss.textContent = ''; }
+}
+
+// Unified entry point — dispatches to MB or Discogs based on active tab
+async function runSearch() {
+  if (currentSearchService === 'discogs') {
+    await searchDiscogs();
+  } else {
+    await searchMusicBrainz();
+  }
+}
+
+// ── Discogs Search ──────────────────────────────────────────────────────────
+// Uses the Discogs database search API (free, requires a personal access token).
+// Personal tokens are available at discogs.com → Settings → Developers.
+// No server proxy needed — CORS is open for the API endpoints.
+// Limitations: track durations are user-submitted and often missing, so
+// "Apply Splits" falls back to title-only mode when durations aren't available.
+
+async function searchDiscogs() {
+  const token  = (document.getElementById('discogsToken')?.value || '').trim();
+  const artist = document.getElementById('metaArtist').value.trim();
+  const album  = document.getElementById('metaAlbum').value.trim();
+
+  if (!token) {
+    setStatus('searchStatus', 'error',
+      '✗ Enter your Discogs personal token first — get one free at discogs.com → Settings → Developers.');
+    return;
+  }
+  if (!artist && !album) {
+    setStatus('searchStatus', 'error', 'Enter an artist or album name to search Discogs.');
+    return;
+  }
+
+  setStatus('searchStatus', 'info', '🔎 Searching Discogs…');
+  document.getElementById('searchResults').innerHTML = '';
+  document.getElementById('searchBtn').disabled = true;
+
+  try {
+    // Build query: prefer artist+title for precision; fall back to title-only
+    const params = new URLSearchParams({ type: 'release', per_page: '10', page: '1' });
+    if (artist) params.set('artist', artist);
+    if (album)  params.set('release_title', album);
+
+    const url = `https://api.discogs.com/database/search?${params}`;
+    const res = await fetch(url, {
+      headers: {
+        'Authorization': `Discogs token=${token}`,
+        'User-Agent': 'VinylSplitter/1.0',
+      }
+    });
+    if (!res.ok) {
+      if (res.status === 401) throw new Error('Invalid token — check your Discogs personal token.');
+      if (res.status === 429) throw new Error('Rate limit hit — wait a moment and try again.');
+      throw new Error(`HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    const results = data.results || [];
+
+    if (!results.length) {
+      setStatus('searchStatus', 'error', 'No results found on Discogs. Try different spelling or fewer words.');
+      document.getElementById('searchBtn').disabled = false;
+      return;
+    }
+
+    setStatus('searchStatus', 'info', `Found ${results.length} release(s) on Discogs. Select one:`);
+    renderDiscogsResults(results, token);
+  } catch(e) {
+    setStatus('searchStatus', 'error', `Discogs search failed: ${e.message}`);
+  }
+  document.getElementById('searchBtn').disabled = false;
+}
+
+function renderDiscogsResults(results, token) {
+  const container = document.getElementById('searchResults');
+  container.innerHTML = '';
+  results.forEach(rel => {
+    const div = document.createElement('div');
+    div.className = 'release-option';
+
+    const year    = rel.year || '?';
+    const format  = (rel.formats || []).map(f => f.name).filter(Boolean).join(', ') || '';
+    const country = rel.country || '';
+    const label   = (rel.label || []).join(', ') || '';
+    const catno   = rel.catno || '';
+    const parts   = [rel.artist, year, format, country, label, catno].filter(Boolean);
+
+    div.innerHTML = `
+      <div class="release-info" style="flex:1;min-width:0">
+        <div class="release-title">${rel.title}</div>
+        <div class="release-meta">${parts.join(' · ')}</div>
+      </div>
+      <button class="btn-apply-splits" title="Load full track listing from Discogs"
+        onclick="event.stopPropagation();applyDiscogsRelease(${rel.id},'${token}',this)">⚡ Load &amp; Apply</button>
+    `;
+    div.onclick = () => selectDiscogsRelease(rel.id, token, div);
+    container.appendChild(div);
+  });
+}
+
+async function selectDiscogsRelease(releaseId, token, el) {
+  document.querySelectorAll('.release-option').forEach(d => d.classList.remove('selected'));
+  if (el) el.classList.add('selected');
+
+  setStatus('searchStatus', 'info', '⏳ Fetching track list from Discogs…');
+  try {
+    const url = `https://api.discogs.com/releases/${releaseId}`;
+    const res = await fetch(url, {
+      headers: {
+        'Authorization': `Discogs token=${token}`,
+        'User-Agent': 'VinylSplitter/1.0',
+      }
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    _applyDiscogsMetadata(data);
+    if (trackSegments.length > 0) renderTrackList();
+    setStatus('searchStatus', 'success', `✓ Metadata loaded for "${data.title_sort || data.title}"`);
+    updateFileMetaBar();
+    setStep(5);
+  } catch(e) {
+    setStatus('searchStatus', 'error', `Could not fetch Discogs release: ${e.message}`);
+  }
+}
+
+async function applyDiscogsRelease(releaseId, token, btnEl) {
+  if (!audioBuffer) { alert('Load an audio file first (card 1).'); return; }
+  if (btnEl) { btnEl.disabled = true; btnEl.textContent = '⏳ Loading…'; }
+
+  try {
+    const url = `https://api.discogs.com/releases/${releaseId}`;
+    const res = await fetch(url, {
+      headers: {
+        'Authorization': `Discogs token=${token}`,
+        'User-Agent': 'VinylSplitter/1.0',
+      }
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+
+    _applyDiscogsMetadata(data);
+
+    // Build split points from tracklist durations (mm:ss strings)
+    // Discogs tracklist may span multiple sides — filter to tracks with real positions
+    const tracklist = (data.tracklist || []).filter(t => t.type_ === 'track');
+    const mbOffset  = Math.max(0, startTrackNum - 1);
+    const useTracks = tracklist.slice(mbOffset);
+
+    // Parse "m:ss" duration strings → seconds
+    const parseDur = (s) => {
+      if (!s) return null;
+      const parts = s.split(':').map(Number);
+      if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) return parts[0] * 60 + parts[1];
+      if (parts.length === 3 && !isNaN(parts[0])) return parts[0]*3600 + parts[1]*60 + parts[2];
+      return null;
+    };
+
+    const durations = useTracks.map(t => parseDur(t.duration));
+    const hasDurations = durations.some(d => d !== null);
+
+    if (hasDurations) {
+      // Cumulative sum → split points
+      pushUndo();
+      const newSplits = [];
+      let cursor = 0;
+      for (let i = 0; i < useTracks.length - 1; i++) {
+        const dur = durations[i];
+        if (!dur) continue;
+        cursor += dur;
+        if (cursor > 5 && cursor < audioBuffer.duration - 2) {
+          newSplits.push(parseFloat(cursor.toFixed(3)));
+        }
+      }
+      if (newSplits.length) {
+        splitPoints = newSplits;
+        splitConfidence = {};
+        newSplits.forEach(t => { splitConfidence[t.toFixed(4)] = 0.8; });
+        nearMissPoints = [];
+        rebuildSegments();
+      }
+
+      // Build pending tracklist from the full tracklist for future split additions
+      const releaseArtistPending = document.getElementById('metaArtist').value.trim();
+      const albumNamePending     = document.getElementById('metaAlbum').value.trim();
+      const yearPending          = document.getElementById('metaYear').value.trim();
+      const genrePending         = document.getElementById('metaGenre').value.trim();
+      pendingReleaseTracks = tracklist.map((t, i) => ({
+        title:            t.title || '',
+        trackArtist:      (() => {
+          const ta = (t.artists || []).map(a => a.name.replace(/\s*\(\d+\)$/, '')).join(', ');
+          return (ta && ta !== releaseArtistPending && ta !== 'Various') ? ta : releaseArtistPending;
+        })(),
+        trackAlbum:       albumNamePending,
+        trackYear:        yearPending,
+        trackGenre:       genrePending,
+        knownDurationSec: durations[i] || null,
+      }));
+
+      // Apply track titles, per-track artists, and known durations
+      const realSegs = trackSegments.filter(s => !s.isNearMiss);
+      useTracks.forEach((t, i) => {
+        if (i >= realSegs.length) return;
+        if (t.title) realSegs[i].title = t.title;
+        if (durations[i]) realSegs[i].knownDurationSec = durations[i];
+        const releaseArtist = document.getElementById('metaArtist').value.trim();
+        const trackArtist   = (t.artists || []).map(a => a.name.replace(/\s*\(\d+\)$/, '')).join(', ');
+        if (trackArtist && trackArtist !== releaseArtist && trackArtist !== 'Various') {
+          realSegs[i].trackArtist = trackArtist;
+        }
+      });
+
+      renderTrackList();
+      drawWaveform();
+      drawOverview();
+      updateFileMetaBar();
+      setStep(4);
+
+      if (btnEl) {
+        btnEl.disabled = false;
+        btnEl.textContent = '✓ Applied';
+        btnEl.style.borderColor = 'var(--green)';
+        btnEl.style.color       = 'var(--green)';
+        // Offer snap
+        if (newSplits.length && !btnEl.parentNode.querySelector('.btn-snap-detect')) {
+          const snapBtn = document.createElement('button');
+          snapBtn.className = 'btn-snap-detect btn';
+          snapBtn.textContent = '⟲ Snap to Detections';
+          snapBtn.title = 'Shift each Discogs split to the nearest detected silence candidate within ±10 s';
+          snapBtn.style.cssText = 'margin-left:0.5rem;font-size:0.7rem;padding:0.2rem 0.6rem;border-color:var(--amber);color:var(--amber)';
+          snapBtn.onclick = function(e) { e.stopPropagation(); snapMBSplitsToDetections(snapBtn); };
+          btnEl.insertAdjacentElement('afterend', snapBtn);
+        }
+        // Convert to undo button
+        _makeApplyUndoBtn(btnEl, '⚡ Load & Apply', '');
+      }
+
+      const statusEl = document.getElementById('searchStatus');
+      if (statusEl) {
+        statusEl.className   = 'status success';
+        statusEl.textContent = newSplits.length
+          ? `✓ Applied ${newSplits.length} split${newSplits.length!==1?'s':''} from Discogs — adjust on the waveform if needed.`
+          : `✓ Titles applied; no usable track durations found for auto-splitting.`;
+      }
+    } else {
+      // No durations — just apply titles, per-track artists, and metadata
+      pushUndo();
+      rebuildSegments();
+      const realSegsND = trackSegments.filter(s => !s.isNearMiss);
+      const releaseArtistND = document.getElementById('metaArtist').value.trim();
+      useTracks.forEach((t, i) => {
+        if (i >= realSegsND.length) return;
+        if (t.title) realSegsND[i].title = t.title;
+        const trackArtistND = (t.artists || []).map(a => a.name.replace(/\s*\(\d+\)$/, '')).join(', ');
+        if (trackArtistND && trackArtistND !== releaseArtistND && trackArtistND !== 'Various') {
+          realSegsND[i].trackArtist = trackArtistND;
+        }
+      });
+      renderTrackList();
+      updateFileMetaBar();
+      if (btnEl) {
+        btnEl.disabled = false;
+        btnEl.textContent = '✓ Titles applied';
+        btnEl.style.borderColor = 'var(--amber)';
+        btnEl.style.color       = 'var(--amber)';
+        _makeApplyUndoBtn(btnEl, '⚡ Load & Apply', '');
+      }
+      const statusElND = document.getElementById('searchStatus');
+      if (statusElND) {
+        statusElND.className   = 'status info';
+        statusElND.textContent = 'ℹ Track titles applied. This Discogs release has no duration data — splits not placed automatically. Use the waveform to place them manually.';
+      }
+    }
+  } catch(e) {
+    if (btnEl) { btnEl.disabled = false; btnEl.textContent = '⚡ Load & Apply'; }
+    alert(`Could not load Discogs release: ${e.message}`);
+  }
+}
+
+function _applyDiscogsMetadata(data) {
+  // Artists: Discogs uses an artists array; strip disambiguation numbers like "(2)"
+  const artistName = (data.artists || []).map(a => a.name.replace(/\s*\(\d+\)$/, '')).join(', ');
+  const albumName  = data.title || '';
+  const year       = data.year ? String(data.year) : '';
+  // Genres and styles: Discogs separates these; combine with semicolons
+  const genreParts = [...(data.genres || []), ...(data.styles || [])];
+  const genre      = genreParts.slice(0, 4).join('; '); // cap at 4 to keep it tidy
+
+  document.getElementById('metaAlbumArtist').value = artistName;
+  document.getElementById('metaArtist').value      = artistName;
+  document.getElementById('metaAlbum').value       = albumName;
+  document.getElementById('metaYear').value        = year;
+  if (genre) document.getElementById('metaGenre').value = genre;
+  document.getElementById('artistInput').value     = artistName;
+  document.getElementById('albumInput').value      = albumName;
+  document.getElementById('metaFields').style.display = 'block';
+
+  // Push global fields to all tracks as fallback
+  _pushGlobalMetaToTracks({ artist: artistName, album: albumName, year, genre });
+
+  // Build pending tracklist from Discogs tracklist for future split additions
+  const tracklistForPending = (data.tracklist || []).filter(t => t.type_ === 'track');
+  pendingReleaseTracks = tracklistForPending.map(t => ({
+    title:            t.title || '',
+    trackArtist:      (() => {
+      const ta = (t.artists || []).map(a => a.name.replace(/\s*\(\d+\)$/, '')).join(', ');
+      return (ta && ta !== artistName && ta !== 'Various') ? ta : artistName;
+    })(),
+    trackAlbum:       albumName,
+    trackYear:        year,
+    trackGenre:       genre,
+    knownDurationSec: (() => {
+      if (!t.duration) return null;
+      const parts = t.duration.split(':').map(Number);
+      if (parts.length === 2 && !isNaN(parts[0])) return parts[0] * 60 + parts[1];
+      if (parts.length === 3 && !isNaN(parts[0])) return parts[0]*3600 + parts[1]*60 + parts[2];
+      return null;
+    })(),
+  }));
+}
+
 async function searchMusicBrainz() {
   // Read from the visible metadata box; keep hidden aliases in sync for legacy code
   let artist = document.getElementById('metaArtist').value.trim();
@@ -5926,6 +6671,27 @@ function renderSearchResults(releases) {
   });
 }
 
+// ── Per-track metadata helpers ────────────────────────────────────────────
+// Push global album metadata down to every real track segment as a fallback.
+// Per-track values already set (e.g. from a previous selection) are preserved
+// unless overwrite=true.
+function _pushGlobalMetaToTracks({ artist, album, year, genre }, overwrite = true) {
+  const realSegs = trackSegments.filter(s => !s.isNearMiss);
+  realSegs.forEach(seg => {
+    if (overwrite || !seg.trackArtist) seg.trackArtist = artist;
+    if (overwrite || !seg.trackAlbum)  seg.trackAlbum  = album;
+    if (overwrite || !seg.trackYear)   seg.trackYear   = year;
+    if (overwrite || !seg.trackGenre)  seg.trackGenre  = genre;
+  });
+}
+
+// Extract the best display artist from a MusicBrainz artist-credit array.
+// Handles join phrases ("feat.", "/", "&") by concatenating them.
+function _mbArtistFromCredit(creditArr) {
+  if (!creditArr || !creditArr.length) return '';
+  return creditArr.map(a => (a.name || a.artist?.name || '') + (a.joinphrase || '')).join('').trim();
+}
+
 async function selectRelease(rel, el) {
   document.querySelectorAll('.release-option').forEach(d=>d.classList.remove('selected'));
   el.classList.add('selected');
@@ -5937,37 +6703,50 @@ async function selectRelease(rel, el) {
     const res = await fetch(url, { headers: { 'User-Agent': 'VinylSplitter/1.0 (browser-tool)' } });
     const data = await res.json();
 
-    const artistName = data['artist-credit'] ? data['artist-credit'].map(a=>a.name||a.artist?.name||'').join(', ') : '';
-    const year = data.date ? data.date.substring(0,4) : '';
-    const genres = data.genres && data.genres.length ? data.genres[0].name : '';
+    const artistName = _mbArtistFromCredit(data['artist-credit']) || '';
+    const albumName  = data.title || '';
+    const year       = data.date ? data.date.substring(0,4) : '';
+    const genres     = data.genres && data.genres.length ? data.genres.map(g=>g.name).join('; ') : '';
 
     document.getElementById('metaAlbumArtist').value = artistName;
-    document.getElementById('metaArtist').value = artistName;
-    document.getElementById('metaAlbum').value = data.title || '';
-    document.getElementById('metaYear').value = year;
-    document.getElementById('metaGenre').value = genres;
-    // sync hidden aliases
-    document.getElementById('artistInput').value = artistName;
-    document.getElementById('albumInput').value  = data.title || '';
+    document.getElementById('metaArtist').value      = artistName;
+    document.getElementById('metaAlbum').value       = albumName;
+    document.getElementById('metaYear').value        = year;
+    document.getElementById('metaGenre').value       = genres;
+    document.getElementById('artistInput').value     = artistName;
+    document.getElementById('albumInput').value      = albumName;
 
-    // Apply track titles and known durations (only to real segments, not near-misses)
-    // startTrackNum offset: if Side B starts at track 4, skip the first 3 MB tracks
+    // Push global fields to all tracks first (album artist, album, year, genre)
+    _pushGlobalMetaToTracks({ artist: artistName, album: albumName, year, genre: genres });
+
+    // Build the pending tracklist for future split additions, then apply to current segments
     if (data.media && data.media.length) {
       const allTracks = data.media.flatMap(m => m.tracks || []);
-      const mbOffset  = Math.max(0, startTrackNum - 1); // 0-based index into MB track list
+      // Store full list so newly-added splits can look up the right title/metadata
+      pendingReleaseTracks = allTracks.map(t => ({
+        title:            t.title || '',
+        trackArtist:      (() => { const ta = _mbArtistFromCredit(t['artist-credit']); return (ta && ta !== artistName) ? ta : artistName; })(),
+        trackAlbum:       albumName,
+        trackYear:        year,
+        trackGenre:       genres,
+        knownDurationSec: t.length ? t.length / 1000 : (t.recording?.length ? t.recording.length / 1000 : null),
+      }));
+      // Apply to existing segments right now
+      const mbOffset  = Math.max(0, startTrackNum - 1);
       const realSegs  = trackSegments.filter(s => !s.isNearMiss);
       realSegs.forEach((seg, i) => {
         const mbTrack = allTracks[mbOffset + i];
         if (!mbTrack) return;
         if (mbTrack.title) seg.title = mbTrack.title;
-        // MusicBrainz track length is in milliseconds
+        const trackArtist = _mbArtistFromCredit(mbTrack['artist-credit']);
+        if (trackArtist && trackArtist !== artistName) seg.trackArtist = trackArtist;
         if (mbTrack.length) seg.knownDurationSec = mbTrack.length / 1000;
-        else if (mbTrack.recording && mbTrack.recording.length) seg.knownDurationSec = mbTrack.recording.length / 1000;
+        else if (mbTrack.recording?.length) seg.knownDurationSec = mbTrack.recording.length / 1000;
       });
-      if (trackSegments.length > 0) renderTrackList();
     }
 
-    setStatus('searchStatus','success',`✓ Metadata loaded for "${data.title}"`);
+    renderTrackList();
+    setStatus('searchStatus','success',`✓ Metadata loaded for "${albumName}"`);
     updateFileMetaBar();
     setStep(5);
   } catch(e) {
@@ -6022,31 +6801,44 @@ async function applySplitsFromRelease(releaseId, btnEl) {
     newSplits.forEach(t => { splitConfidence[t.toFixed(4)] = 0.8; });
     nearMissPoints = [];
 
-    // Also apply metadata (titles, artist, etc.) same as selectRelease does
-    const artistName = data['artist-credit']
-      ? data['artist-credit'].map(a => a.name || a.artist?.name || '').join(', ')
-      : '';
-    const year   = data.date ? data.date.substring(0, 4) : '';
-    const genres = data.genres && data.genres.length ? data.genres[0].name : '';
+    // Also apply metadata — global fields first, then per-track overrides
+    const artistName = _mbArtistFromCredit(data['artist-credit']) || '';
+    const albumName  = data.title || '';
+    const year       = data.date ? data.date.substring(0, 4) : '';
+    const genres     = data.genres && data.genres.length ? data.genres.map(g=>g.name).join('; ') : '';
 
     document.getElementById('metaAlbumArtist').value = artistName;
-    document.getElementById('metaArtist').value = artistName;
-    document.getElementById('metaAlbum').value  = data.title || '';
-    document.getElementById('metaYear').value   = year;
-    document.getElementById('metaGenre').value  = genres;
+    document.getElementById('metaArtist').value      = artistName;
+    document.getElementById('metaAlbum').value       = albumName;
+    document.getElementById('metaYear').value        = year;
+    document.getElementById('metaGenre').value       = genres;
     const ba = document.getElementById('bulkArtist'); if (ba) ba.value = artistName;
-    const bl = document.getElementById('bulkAlbum');  if (bl) bl.value = data.title || '';
-    document.getElementById('artistInput').value = artistName;
-    document.getElementById('albumInput').value  = data.title || '';
+    const bl = document.getElementById('bulkAlbum');  if (bl) bl.value = albumName;
+    document.getElementById('artistInput').value     = artistName;
+    document.getElementById('albumInput').value      = albumName;
 
     rebuildSegments();
 
-    // Apply track titles and known durations to the new segments
+    // Build pending tracklist (all tracks, not just useTracks) for future splits
+    const allTracksForPending = (data.media || []).flatMap(m => m.tracks || []);
+    pendingReleaseTracks = allTracksForPending.map(t => ({
+      title:            t.title || '',
+      trackArtist:      (() => { const ta = _mbArtistFromCredit(t['artist-credit']); return (ta && ta !== artistName) ? ta : artistName; })(),
+      trackAlbum:       albumName,
+      trackYear:        year,
+      trackGenre:       genres,
+      knownDurationSec: t.length ? t.length / 1000 : (t.recording?.length ? t.recording.length / 1000 : null),
+    }));
+
+    // Push global meta to all tracks, then apply per-track title/artist/duration
+    _pushGlobalMetaToTracks({ artist: artistName, album: albumName, year, genre: genres });
     const realSegs = trackSegments.filter(s => !s.isNearMiss);
     realSegs.forEach((seg, i) => {
       const mbTrack = useTracks[i];
       if (!mbTrack) return;
       if (mbTrack.title) seg.title = mbTrack.title;
+      const trackArtist = _mbArtistFromCredit(mbTrack['artist-credit']);
+      if (trackArtist && trackArtist !== artistName) seg.trackArtist = trackArtist;
       const durMs = mbTrack.length || (mbTrack.recording && mbTrack.recording.length);
       if (durMs) seg.knownDurationSec = durMs / 1000;
     });
@@ -6062,7 +6854,7 @@ async function applySplitsFromRelease(releaseId, btnEl) {
       btnEl.textContent = '✓ Applied';
       btnEl.style.borderColor = 'var(--green)';
       btnEl.style.color = 'var(--green)';
-      // Show "Snap to Detections" button next to Applied
+      // Offer "Snap to Detections"
       if (!btnEl.parentNode.querySelector('.btn-snap-detect')) {
         const snapBtn = document.createElement('button');
         snapBtn.className = 'btn-snap-detect btn';
@@ -6072,6 +6864,8 @@ async function applySplitsFromRelease(releaseId, btnEl) {
         snapBtn.onclick = function(e) { e.stopPropagation(); snapMBSplitsToDetections(snapBtn); };
         btnEl.insertAdjacentElement('afterend', snapBtn);
       }
+      // Convert to undo button
+      _makeApplyUndoBtn(btnEl, '⚡ Apply Splits', '');
     }
 
     const status = document.getElementById('searchStatus') || document.getElementById('bulkSearchStatus');
@@ -6083,6 +6877,39 @@ async function applySplitsFromRelease(releaseId, btnEl) {
     if (btnEl) { btnEl.disabled = false; btnEl.textContent = '⚡ Apply Splits'; }
     alert(`Could not apply splits: ${e.message}`);
   }
+}
+
+// ── Apply → Undo button helper ─────────────────────────────────────────────
+// Converts an "Apply Splits" button into an "↩ Undo" button immediately after
+// splits are applied. Clicking it calls undoAction() and restores the button.
+// Also removes the Snap button if one was injected next to it.
+function _makeApplyUndoBtn(btnEl, originalText, originalStyle) {
+  if (!btnEl) return;
+  btnEl.textContent    = '↩ Undo apply';
+  btnEl.style.cssText  = (btnEl.getAttribute('style') || '') // keep position/display attrs
+    .replace(/border-color:[^;]+;?/g, '')
+    .replace(/color:[^;]+;?/g, '');
+  btnEl.style.borderColor = 'var(--amber)';
+  btnEl.style.color       = 'var(--amber)';
+
+  // Replace onclick with one-shot undo
+  const prevOnclick = btnEl.onclick;
+  btnEl.onclick = function(e) {
+    e.stopPropagation();
+    undoAction();
+    // Restore button to original state
+    btnEl.textContent    = originalText;
+    btnEl.style.borderColor = '';
+    btnEl.style.color       = '';
+    btnEl.onclick = prevOnclick;
+    // Remove snap button if present
+    const snap = btnEl.parentNode && btnEl.parentNode.querySelector('.btn-snap-detect');
+    if (snap) snap.remove();
+    // Re-render so the waveform and list reflect the undone state
+    drawWaveform();
+    drawOverview();
+    renderTrackList();
+  };
 }
 
 // ── Snap MB splits to nearest silence candidates ───────────────────────────
@@ -6124,7 +6951,8 @@ async function snapMBSplitsToDetections(snapBtn) {
           if (inSil) {
             const dur = w - silStart;
             if (dur >= minSilW * silFloor) {
-              const midSec = ((silStart + dur * 0.8) * winSize) / sr;
+              const deepW  = deepestSilenceIdx(rms, silStart, w);
+              const midSec = (deepW * winSize) / sr;
               if (midSec > 5 && midSec < audioBuffer.duration - 2) result.push(midSec);
             }
             inSil = false;
@@ -6134,7 +6962,8 @@ async function snapMBSplitsToDetections(snapBtn) {
       if (inSil) {
         const dur = numW - silStart;
         if (dur >= Math.floor(minSilSec * sr / winSize) * silFloor) {
-          const midSec = ((silStart + dur * 0.8) * winSize) / sr;
+          const deepW  = deepestSilenceIdx(rms, silStart, numW);
+          const midSec = (deepW * winSize) / sr;
           if (midSec > 5 && midSec < audioBuffer.duration - 2) result.push(midSec);
         }
       }
@@ -6257,7 +7086,7 @@ async function exportTracks() {
     || (document.getElementById('bulkGenre') && document.getElementById('bulkGenre').value.trim())
     || '';
 
-  if (exportFormat === 'cue') { exportCueSheet(globalArtist, globalAlbum, year); return; }
+  if (exportFormat === 'cue') { exportCueSheet(globalAlbumArtist, globalArtist, globalAlbum, year); return; }
   if (exportFormat === 'json') { exportJSON(globalAlbumArtist, globalArtist, globalAlbum, year, genre); return; }
   if (exportFormat === 'ffmpeg')    { exportFFmpegScript(globalAlbumArtist, globalArtist, globalAlbum, year, genre, 'sh');  return; }
   if (exportFormat === 'ffmpegbat') { exportFFmpegScript(globalAlbumArtist, globalArtist, globalAlbum, year, genre, 'bat'); return; }
@@ -6286,7 +7115,8 @@ async function exportTracks() {
     }
 
     const meta = {
-      title:  seg.title   || `Track ${absTrack}`,
+      title:       seg.title   || `Track ${absTrack}`,
+      albumArtist: globalAlbumArtist,
       artist,
       album,
       track:  `${absTrack}/${startTrackNum - 1 + realSegs.length}`,
@@ -6306,11 +7136,11 @@ async function exportTracks() {
   document.getElementById('exportBtn').disabled = false;
 }
 
-function exportCueSheet(globalArtist, globalAlbum, year) {
+function exportCueSheet(globalAlbumArtist, globalArtist, globalAlbum, year) {
   const realSegs = trackSegments.filter(s => !s.isNearMiss);
   let cue = `REM GENRE ${document.getElementById('metaGenre').value || ''}\n`;
   cue += `REM DATE ${year}\n`;
-  cue += `PERFORMER "${globalArtist}"\n`;
+  cue += `PERFORMER "${globalAlbumArtist || globalArtist}"\n`;
   cue += `TITLE "${globalAlbum}"\n`;
   cue += `FILE "${originalFile ? originalFile.name : 'audio.wav'}" WAVE\n`;
   realSegs.forEach((seg, i) => {
@@ -6322,6 +7152,7 @@ function exportCueSheet(globalArtist, globalAlbum, year) {
     cue += `  TRACK ${String(absTrack).padStart(2,'0')} AUDIO\n`;
     cue += `    TITLE "${seg.title}"\n`;
     cue += `    PERFORMER "${artist}"\n`;
+    if (seg.trackBpm) cue += `    REM BPM ${Math.round(seg.trackBpm)}\n`;
     cue += `    INDEX 01 ${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}:${String(frames).padStart(2,'0')}\n`;
   });
   downloadBlob(new Blob([cue], {type:'text/plain'}), `${sanitize(globalAlbum)}.cue`);
@@ -6507,31 +7338,10 @@ function rcAnimatePlayhead() {
   const ph     = document.getElementById('rcPlayhead');
   const f      = currentT / audioBuffer.duration;
 
-  // Suppress auto-scroll for 2 s after the user zoomed — this lets the zoom
-  // anchor to the cursor rather than being immediately overridden by the
-  // playhead panning logic.
-  const autoScrollOk = (Date.now() - lastUserZoomMs) > 2000;
-
   if (f >= viewStart && f <= viewEnd) {
     const pct = ((f - viewStart) / (viewEnd - viewStart)) * 100;
     ph.style.left = `calc(${pct}% - 1px)`;
     ph.classList.add('active');
-
-    // Auto-scroll: if playhead nears the right edge (>85%), pan view right
-    if (autoScrollOk && f > viewEnd - (viewEnd - viewStart) * 0.15) {
-      const span = viewEnd - viewStart;
-      viewStart = Math.min(1 - span, f - span * 0.15);
-      viewEnd   = viewStart + span;
-      syncScrollbar();
-    }
-  } else if (autoScrollOk && f > viewEnd) {
-    // Jumped past view: re-centre
-    const span = viewEnd - viewStart;
-    viewStart = Math.max(0, f - span * 0.15);
-    viewEnd   = Math.min(1, viewStart + span);
-    ph.style.left = `calc(${((f - viewStart) / (viewEnd - viewStart)) * 100}% - 1px)`;
-    ph.classList.add('active');
-    syncScrollbar();
   } else {
     ph.classList.remove('active');
   }
@@ -6714,6 +7524,7 @@ function bufferToWav(buf, meta = {}) {
   addInfo('INAM', meta.title);
   addInfo('IART', meta.artist);
   addInfo('IPRD', meta.album);
+  addInfo('IART2', meta.albumArtist);   // non-standard but widely supported album-artist chunk
   addInfo('ITRK', meta.track);
   addInfo('ICRD', meta.year);
   addInfo('IGNR', meta.genre);
@@ -6933,8 +7744,9 @@ function applyListTracks() {
   splitConfidence = {};
   splitPoints.forEach(t => { splitConfidence[t.toFixed(4)] = 1; });
 
-  // Clear near-misses — user-provided list supersedes detection
+  // Clear near-misses and pending release data — user-provided list supersedes everything
   nearMissPoints = [];
+  pendingReleaseTracks = [];
 
   // Rebuild segments first so we have the right slots
   rebuildSegments();
