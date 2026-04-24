@@ -1,22 +1,22 @@
 # Audio File Splitter
 Vinyl &amp; Tape Audio File Splitter is a single-file browser tool for:
-- splitting recordings into individual tracks, 
-- tagging them with metadata, and 
-- exporting them as WAV files or FFmpeg scripts.
+- splitting recordings into individual tracks (using detection methods, a pasted list, or album-based metadata information), 
+- tagging metadata (from MusicBrainz, Discogs, or user) (bpm with detection) (song recognition with third-party connection)
+- exporting as WAV files or FFmpeg scripts (instal FFmeg and run the script at the location of the file).
 
-No installation. 
-No uploads. 
-Runs in the browser. 
-Optional song recognition requires third-party connection.
+No installation or uploads. 
+Runs in the browser.
+Unstall FFmpeg to process on local computer.
+Song recognition requires third-party connection.
 
 ## 1. Add an audio file.
-(MP3, WAV, FLAC, OGG, M4A). Large VBR MP3s handled via chunked decoding.
+(MP3, WAV, FLAC, OGG, M4A). 
 
 ## 2. Waveform viewer and split editor. 
 - A zoomable view of the audio file.  
 - Splits can be added, deleted, and moved.
 - Audio can be played/stopped from any location with right-click.
-- Optional view as spectrogram.
+- Optional view as spectrogram to better spot song changes.
 
 ## 3. Detection.
 ### Automated detection using a simple process.
